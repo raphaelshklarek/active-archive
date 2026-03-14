@@ -10,10 +10,6 @@ I am obviously in no way attempting to profit off their idea and work, so this a
 
 I hope you enjoy it and that it sparks your creativity. Peace and one love.
 
-## Operating System compatibility
-
-Active Archive is only compatible with Apple Silicon computers for now. I work on an M4 MacBook Pro and don't have an intel Mac or windows machine at my disposal. I apologize that some may therefore not be able to use it. If I can figure it out, I will make the app available for other operating systems as well.
-
 ## Features
 
 **Archive View**
@@ -35,6 +31,10 @@ Active Archive is only compatible with Apple Silicon computers for now. I work o
 ![Shuffler View](assets/shuffler-view.png)
 
 ## Running the App
+
+### Operating System Compatibility
+
+Active Archive currently only works on computers with Apple Silicon chips. I work on an M4 MacBook Pro and don't have an intel Mac or windows machine at my disposal. I apologize that some may therefore not be able to use it. If I can figure it out, I will make the app available for other operating systems as well.
 
 ### Adding Files
 1. Click the **ADD** button in Archive view
