@@ -8,7 +8,7 @@ A Brian Eno-inspired audio archive and shuffler application.
 - Browse and organize your audio library
 - Smooth, high-resolution waveforms (powered by WaveSurfer.js)
 - Fast search and sorting
-- Random playback mode (⚡ button)
+- Random playback mode
 - Persistent waveform caching with IndexedDB
 
 **Shuffler View**
@@ -27,7 +27,7 @@ A Brian Eno-inspired audio archive and shuffler application.
 
 ### Playing Audio
 - **Single file**: Click any file in the table
-- **Random mode**: Click the ⚡ button to play files randomly
+- **Random mode**: Click the **RANDOM** button to play files randomly
 
 ### Shuffler Mode
 1. Click **GENERATE** to generate 3 random tracks
