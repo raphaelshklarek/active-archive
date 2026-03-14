@@ -1,6 +1,6 @@
 # Active Archive
 
-A Brian Eno-inspired audio archive and shuffler application.
+A Brian Eno and Peter Chilvers-inspired audio archive and shuffler application.
 
 ## Features
 
