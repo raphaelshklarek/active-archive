@@ -10,6 +10,10 @@ I am obviously in no way attempting to profit off their idea and work, so this a
 
 I hope you enjoy it and that it sparks your creativity. Peace and one love.
 
+## Demo
+
+[![Watch the demo](https://img.youtube.com/vi/nR4JAonAR4g/maxresdefault.jpg)](https://www.youtube.com/watch?v=nR4JAonAR4g)
+
 ## Features
 
 **Archive View**
@@ -19,12 +23,16 @@ I hope you enjoy it and that it sparks your creativity. Peace and one love.
 - Random playback mode
 - Persistent waveform caching with IndexedDB
 
+![Archive View](assets/archive-view.png)
+
 **Shuffler View**
 - Multi-track simultaneous playback
 - Individual track controls (Mute, Solo, Pause)
 - Volume sliders per track
 - Save and load track combinations
 - Looping tracks
+
+![Shuffler View](assets/shuffler-view.png)
 
 ## Running the App
 
