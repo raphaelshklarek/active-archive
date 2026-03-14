@@ -10,10 +10,6 @@ I am obviously in no way attempting to profit off their idea and work, so this a
 
 I hope you enjoy it and that it sparks your creativity. Peace and one love.
 
-## Demo
-
-[![Watch the demo](https://img.youtube.com/vi/nR4JAonAR4g/maxresdefault.jpg)](https://www.youtube.com/watch?v=nR4JAonAR4g)
-
 ## Features
 
 **Archive View**
@@ -59,3 +55,6 @@ MIT
 ## Credits
 
 Inspired by Brian Eno and Peter Chilvers' generative music applications and philosophy. Credit for the inspiration and my joy building and using this app goes to them.
+
+[![Inside Brian Eno's Studio | Zane Lowe Interview](https://img.youtube.com/vi/nR4JAonAR4g/maxresdefault.jpg)](https://www.youtube.com/watch?v=nR4JAonAR4g)
+[Watch the video on YouTube that gave me the inspiration](https://www.youtube.com/watch?v=nR4JAonAR4g)
