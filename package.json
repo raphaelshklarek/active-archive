@@ -1,0 +1,47 @@
+{
+  "name": "active-archive",
+  "version": "3.6.0",
+  "description": "Brian Eno-inspired audio archive and shuffler",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev:vite": "vite",
+    "build": "vite build && electron-builder"
+  },
+  "keywords": [
+    "audio",
+    "archive",
+    "electron"
+  ],
+  "author": "Raphael Shklarek",
+  "license": "MIT",
+  "dependencies": {
+    "dexie": "^3.2.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-window": "^1.8.10",
+    "wavesurfer.js": "^7.7.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "vite": "^5.0.10",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.activearchive.app",
+    "productName": "Active Archive",
+    "files": [
+      "dist/**/*",
+      "main.js"
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "icon": "icon.icns"
+    }
+  }
+}
