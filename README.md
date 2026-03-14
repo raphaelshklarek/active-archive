@@ -11,8 +11,6 @@ This audio archive and shuffler application is inspired by Brian Eno and Peter C
 - Random playback mode
 - Persistent waveform caching with IndexedDB
 
-
-
 **Shuffler View**
 - Multi-track simultaneous playback
 - Individual track controls (Mute, Solo, Pause)
