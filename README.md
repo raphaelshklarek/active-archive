@@ -20,6 +20,7 @@ I hope you enjoy it and that it sparks your creativity. Peace and one love.
 - Persistent waveform caching with IndexedDB
 
 ![Archive View](assets/archive-view.png)
+![Archive View - Dark Mode](assets/archive-view-dark.png)
 
 **Shuffler View**
 - Multi-track simultaneous playback
@@ -29,6 +30,7 @@ I hope you enjoy it and that it sparks your creativity. Peace and one love.
 - Looping tracks
 
 ![Shuffler View](assets/shuffler-view.png)
+![Shuffler View - Dark Mode](assets/shuffler-view-dark.png)
 
 ## Running the App
 
