@@ -1,6 +1,14 @@
 # Active Archive
 
-This audio archive and shuffler application is inspired by Brian Eno and Peter Chilvers. I got the idea from seeing Brian Eno demonstrate it in a video interview with Zane Lowe on the Apple Music channel and have been obsessed with it ever since. For almost a year I have been working on it on and off in collaboration with Claude Code. I am not a coder and thus I am grateful we live in a time where we can build out our own fantasies. There is obviously much to worry about and lament regarding music, arts and humanity in general but I set out to do something positive with it and now want to share with many who have also commented on the video wishing for such a program. It is obviously much simpler and not as beautiful as Eno and Chilver's original but I'm absolutely thrilled with how it turned out and am actually using it every day with my joy. I am obviously in no way attempting to profit off their idea and work, so this application will always remain free and open source for everybody to use it and do with it as they please. I hope you enjoy it and that it sparks your creativity. Peace and one love.
+This audio archive and shuffler application is inspired by Brian Eno and Peter Chilvers. I got the idea from seeing Brian Eno demonstrate it in a video interview with Zane Lowe on the Apple Music channel and have been obsessed with it ever since. 
+
+For almost a year I have been working on it on and off in collaboration with Claude Code. I am not a coder and thus I am grateful we live in a time where we can build out our own fantasies. There is obviously much to worry about and lament regarding music, arts and humanity in general but I set out to do something positive with it and now want to share with many who have also commented on the video wishing for such a program. 
+
+It is obviously much more rudimentary and not as beautiful as Eno and Chilvers' original but I'm absolutely thrilled with how it turned out and actually using it every day with joy. For me, it acts as a time machine through 15 years of making music that puts me in touch with pieces I've done that I would have otherwise forgotten about. It has reinvigorated my creative and artistic practice. It has pulled me away from the constant tension between a blank canvas, too many options and all the noise on the internet.
+
+I am obviously in no way attempting to profit off their idea and work, so this application will always remain free and open source for everybody to use it and do with it as they please. 
+
+I hope you enjoy it and that it sparks your creativity. Peace and one love.
 
 ## Features
 
