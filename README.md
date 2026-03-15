@@ -2,7 +2,7 @@
 
 This audio archive and shuffler application is inspired by Brian Eno and Peter Chilvers. I got the idea from seeing Brian Eno demonstrate their version in a video interview with Zane Lowe on the Apple Music channel and have been obsessed with it ever since. 
 
-For almost a year I have been recurringly working on it in collaboration with Claude Code. I am not a coder and thus I am grateful we live in a time where we can build out our own fantasies. There is obviously much to worry about and lament regarding music, arts and humanity in general but I set out to do something positive with it and now want to share with many who have also commented on the video wishing for such a program. 
+For almost a year I have been recurringly working on it in collaboration with Claude Code. I am not a coder and so I am grateful we live in a time where we can build out our own fantasies. There is obviously much to worry about and lament regarding music, arts and humanity in general but I set out to do something positive with it and now want to share with many who have also commented on the video wishing for such a program. 
 
 It is more rudimentary and not as beautiful as Eno and Chilvers' original but I'm absolutely thrilled with how it turned out and actually using it every day with joy. For me, it acts as a time machine that puts me in touch with the pieces I've made and the feelings that come along with them, that I would have otherwise forgotten about or wouldn't be able to access with this immediacy. It has reinvigorated my creative and artistic practice. It has pulled me away from the constant tension between a blank canvas, too many options and all the noise on the internet.
 
