@@ -38,7 +38,7 @@ I hope you enjoy it and that it sparks your creativity. Peace and one love.
 
 ### Operating System Compatibility
 
-Active Archive currently only works on computers with Apple Silicon chips. I work on an M4 MacBook Pro and don't have an intel Mac or windows machine at my disposal. I apologize that some may therefore not be able to use it. If I can figure it out, I will make the app available for other operating systems as well.
+Active Archive now works on both Apple Silicon Macs and windows computers.
 
 ### Adding Files
 1. Click the **ADD** button in Archive view
