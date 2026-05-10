@@ -28,6 +28,38 @@ db.version(3).stores({
   preferences: 'key, value'
 });
 
+// Version 4: Add importedFolders store and isMissing index
+db.version(4).stores({
+  audioFiles: 'id, name, duration, date, location, isFavorite, isMissing',
+  waveformCache: 'fileId, peaks, created',
+  combinations: 'id, name, date, tracks',
+  playlists: 'id, name, fileIds, created',
+  importedFolders: 'path, dateAdded, lastScanned',
+  preferences: 'key, value'
+});
+
+// Version 5: Index color (perceptual hue tag) and brightness (1-10) on audioFiles.
+// Inspired by Rod Modell's library organisation: each sound carries a colour and
+// a brightness rating; mixes are completed by retrieving e.g. "a green 7".
+db.version(5).stores({
+  audioFiles: 'id, name, duration, date, location, isFavorite, isMissing, color, brightness',
+  waveformCache: 'fileId, peaks, created',
+  combinations: 'id, name, date, tracks',
+  playlists: 'id, name, fileIds, created',
+  importedFolders: 'path, dateAdded, lastScanned',
+  preferences: 'key, value'
+});
+
+// Default palette seeded on first run. User can edit/extend via palette editor.
+// Modell explicitly named green/red/brown; blue and amber added as common neighbours.
+export const DEFAULT_COLOR_PALETTE = [
+  { id: 'green', name: 'Green', hex: '#4caf50' },
+  { id: 'red',   name: 'Red',   hex: '#e53935' },
+  { id: 'brown', name: 'Brown', hex: '#795548' },
+  { id: 'blue',  name: 'Blue',  hex: '#1e88e5' },
+  { id: 'amber', name: 'Amber', hex: '#ffb300' }
+];
+
 // Helper functions
 export const saveAudioFile = async (file) => {
   await db.audioFiles.put(file);
@@ -96,6 +128,18 @@ export const getPlaylists = async () => {
 
 export const deletePlaylist = async (id) => {
   await db.playlists.delete(id);
+};
+
+export const getImportedFolders = async () => {
+  return await db.importedFolders.toArray();
+};
+
+export const saveImportedFolder = async (folder) => {
+  await db.importedFolders.put(folder);
+};
+
+export const deleteImportedFolder = async (path) => {
+  await db.importedFolders.delete(path);
 };
 
 // Migrate file paths after folder reorganisation

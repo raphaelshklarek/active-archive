@@ -466,6 +466,153 @@ body {
   opacity: 1 !important;
 }
 
+/* Folders section (mirrors playlists) */
+.folders-header {
+  padding: 12px 16px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  opacity: 0.7;
+  border-top: 1px solid rgba(0, 0, 0, 0.12);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 50px;
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .folders-header {
+    border-top-color: rgba(255, 255, 255, 0.12);
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+  }
+}
+
+.folders-header button {
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: inherit;
+}
+
+.folders-header button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (prefers-color-scheme: dark) {
+  .folders-header button {
+    background: #3a3a3a;
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+}
+
+.folders-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.empty-folders {
+  padding: 16px 24px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  margin: 2px 8px;
+  gap: 6px;
+  border-radius: 8px;
+}
+
+.folder-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  .folder-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+.folder-name {
+  flex: 1;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-rescan,
+.folder-remove {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  padding: 0;
+  color: inherit;
+}
+
+.folder-item:hover .folder-rescan,
+.folder-item:hover .folder-remove {
+  opacity: 0.55;
+}
+
+.folder-rescan:hover,
+.folder-remove:hover {
+  opacity: 1 !important;
+}
+
+.folder-rescan:disabled {
+  opacity: 0.25 !important;
+  cursor: default;
+}
+
+/* Missing file row treatment */
+.file-table-row.missing {
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.missing-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-radius: 4px;
+  background: rgba(200, 60, 60, 0.18);
+  color: rgb(160, 30, 30);
+  font-style: normal;
+}
+
+@media (prefers-color-scheme: dark) {
+  .missing-badge {
+    background: rgba(220, 90, 90, 0.25);
+    color: rgb(240, 150, 150);
+  }
+}
+
 .player-section {
   background: rgba(100, 180, 180, 0.15);
   padding: 40px 16px 24px;
@@ -788,6 +935,19 @@ body {
   flex-shrink: 0;
 }
 
+/* Short vertical pipe between column headers — centered, not full-height. */
+.file-table-header-cell:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
 .file-table-header-cell:hover {
   background: rgba(0, 0, 0, 0.04);
 }
@@ -798,6 +958,10 @@ body {
     border-bottom-color: rgba(255, 255, 255, 0.12);
   }
 
+  .file-table-header-cell:not(:last-child)::after {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
   .file-table-header-cell:hover {
     background: rgba(255, 255, 255, 0.04);
   }
@@ -806,6 +970,38 @@ body {
 .file-table-body {
   flex: 1;
   overflow: hidden;
+}
+
+/* Zebra striping is painted only on the virtualized inner div, so it scrolls
+   with the rows (stripes stay locked to row indices). `min-height: 100%`
+   stretches the inner to fill the viewport even when the result set is short,
+   so the alternation continues into empty space below the last row.
+   Row height is 28px; tinted band first so that index 0 reads as `even`. */
+.file-list-inner {
+  min-height: 100%;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.025) 0,
+      rgba(0, 0, 0, 0.025) 28px,
+      transparent 28px,
+      transparent 56px
+    ),
+    #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .file-list-inner {
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.025) 0,
+        rgba(255, 255, 255, 0.025) 28px,
+        transparent 28px,
+        transparent 56px
+      ),
+      #1e1e1e;
+  }
 }
 
 .file-table {
@@ -926,17 +1122,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Virtualized row styles */
+/* Virtualized row styles. No bottom border — the body's repeating gradient
+   provides the visual row separation, matching the look of empty space. */
 .file-table-row {
   cursor: pointer;
   transition: background 0.1s;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   align-items: center;
 }
 
-.file-table-row.even {
-  background: rgba(0, 0, 0, 0.025);
-}
+/* Even-row tint comes from the body's repeating gradient (see .file-table-body)
+   so that empty space below the last row keeps the striping going. */
 
 .file-table-row:hover {
   background: rgba(0, 0, 0, 0.03);
@@ -996,14 +1191,6 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  .file-table-row {
-    border-bottom-color: rgba(255, 255, 255, 0.05);
-  }
-
-  .file-table-row.even {
-    background: rgba(255, 255, 255, 0.025);
-  }
-
   .file-table-row:hover {
     background: rgba(255, 255, 255, 0.04);
   }
@@ -1711,4 +1898,415 @@ body {
     background: rgba(255, 255, 255, 0.3);
     background-clip: padding-box;
   }
+}
+
+/* ─── Colour / brightness tagging (Modell-style) ────────────────────── */
+
+.color-filter-rail {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.02);
+  font-size: 12px;
+}
+
+.tag-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tag-section-divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(0, 0, 0, 0.15);
+  margin: 2px 4px;
+}
+
+.rail-tag-button {
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  color: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.rail-tag-button:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.35);
+}
+
+.color-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.7;
+  transition: transform 0.12s, border-color 0.12s;
+}
+
+.color-chip:hover { border-color: rgba(0, 0, 0, 0.3); }
+
+.color-chip.active {
+  border-color: rgba(0, 0, 0, 0.7);
+  transform: scale(1.08);
+}
+
+.palette-edit-button {
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
+  margin-left: 4px;
+}
+
+.brightness-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.brightness-label {
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+
+.brightness-range select {
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.include-unrated {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.filter-clear {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* Row swatch + brightness number */
+.file-color {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.row-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid;
+  opacity: 0.7;
+}
+
+.row-brightness {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  opacity: 0.85;
+  min-width: 12px;
+  text-align: left;
+}
+
+/* Popover */
+.color-popover {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  padding: 10px;
+  min-width: 220px;
+  position: fixed;
+}
+
+.color-popover-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.5;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.color-popover-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  .color-popover-close:hover { background: rgba(255, 255, 255, 0.08); }
+}
+
+.color-popover-title {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-bottom: 8px;
+  padding-right: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+.color-popover-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.7;
+  transition: border-color 0.12s, transform 0.12s;
+}
+
+.color-swatch:hover { border-color: rgba(0, 0, 0, 0.3); }
+
+.color-swatch.active {
+  border-color: rgba(0, 0, 0, 0.7);
+  transform: scale(1.06);
+}
+
+.color-swatch.none {
+  background: transparent;
+  border: 1.5px dashed rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.color-popover-brightness {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  gap: 3px;
+}
+
+.brightness-cell {
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: transparent;
+  border-radius: 3px;
+  padding: 3px 0;
+  font-size: 11px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.brightness-cell:hover { background: rgba(0, 0, 0, 0.06); }
+
+.brightness-cell.active {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+
+.brightness-cell.none { color: rgba(0, 0, 0, 0.5); }
+
+/* Palette editor */
+.palette-editor { min-width: 360px; }
+
+.palette-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.palette-row input[type="color"],
+.palette-add input[type="color"] {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  margin-bottom: 0;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.12s;
+}
+
+.palette-row input[type="color"]:hover,
+.palette-add input[type="color"]:hover { opacity: 1; }
+
+.palette-row input[type="text"] {
+  flex: 1;
+  width: auto;
+  padding: 4px 6px;
+  font-size: 12px;
+  margin-bottom: 0;
+}
+
+.palette-usage {
+  font-size: 11px;
+  opacity: 0.6;
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.palette-row > button {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.5;
+  width: 24px;
+}
+
+.palette-row > button:hover { opacity: 1; }
+
+.palette-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 14px;
+  margin-bottom: 18px;
+}
+
+
+.palette-add input[type="text"] {
+  flex: 1;
+  width: auto;
+  padding: 4px 6px;
+  font-size: 12px;
+  margin-bottom: 0;
+}
+
+/* Reserves exactly the trailing space the rows above use for the usage count
+   and × button (28 + 8 + 24 = 60px) so the new-colour input's right edge
+   aligns with the existing colour-name inputs. */
+.palette-add-trailing {
+  width: 60px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.palette-add-button {
+  padding: 4px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: inherit;
+  transition: all 0.12s ease;
+}
+
+.palette-add-button:hover:not(:disabled) {
+  background: #f8f8f8;
+  border-color: rgba(0, 0, 0, 0.35);
+}
+
+.palette-add-button:active:not(:disabled) {
+  background: #ececec;
+}
+
+.palette-add-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (prefers-color-scheme: dark) {
+  .color-filter-rail {
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+  .palette-edit-button,
+  .filter-clear,
+  .rail-tag-button { border-color: rgba(255, 255, 255, 0.2); }
+  .rail-tag-button:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+  .tag-section-divider { background: rgba(255, 255, 255, 0.15); }
+  .color-popover {
+    background: #2a2a2a;
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    color: #ddd;
+  }
+  .brightness-cell { border-color: rgba(255, 255, 255, 0.18); color: #ddd; }
+  .brightness-cell:hover { background: rgba(255, 255, 255, 0.08); }
+  .brightness-cell.active { background: #ddd; color: #111; border-color: #ddd; }
+  .color-swatch.none {
+    border-color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .palette-row input[type="text"],
+  .palette-add input[type="text"] {
+    background: #1c1c1c;
+    color: #ddd;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+  .palette-add-button {
+    background: #3a3a3a;
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+  .palette-add-button:hover:not(:disabled) { background: #454545; }
+  .palette-add-button:active:not(:disabled) { background: #505050; }
 }

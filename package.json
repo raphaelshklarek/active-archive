@@ -1,13 +1,15 @@
 {
   "name": "active-archive",
-  "version": "3.6.0",
+  "version": "4.3.0",
   "description": "Brian Eno-inspired audio archive and shuffler",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "concurrently \"npm run dev:vite\" \"wait-on http://localhost:5173 && electron .\"",
     "dev:vite": "vite",
-    "build": "vite build && electron-builder"
+    "build": "vite build && electron-builder",
+    "build:win": "vite build && electron-builder --win",
+    "build:mac": "vite build && electron-builder --mac"
   },
   "keywords": [
     "audio",
@@ -29,6 +31,7 @@
     "concurrently": "^8.2.2",
     "electron": "^28.1.0",
     "electron-builder": "^24.9.1",
+    "png-to-ico": "^3.0.1",
     "vite": "^5.0.10",
     "wait-on": "^7.2.0"
   },
@@ -42,6 +45,17 @@
     "mac": {
       "category": "public.app-category.music",
       "icon": "icon.icns"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     }
   }
 }

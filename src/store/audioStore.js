@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as db from '../database';
+import { DEFAULT_COLOR_PALETTE } from '../database';
 
 // Use built-in crypto for UUID generation
 const uuidv4 = () => crypto.randomUUID();
@@ -11,6 +12,35 @@ const isElectron = typeof window !== 'undefined' && window.require;
 const ipcRenderer = isElectron ? window.require('electron').ipcRenderer : null;
 const path = isElectron ? window.require('path') : null;
 const fs = isElectron ? window.require('fs').promises : null;
+
+const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.aiff', '.flac', '.m4a', '.aac', '.ogg'];
+
+// Recursively walk a folder and return all audio file paths.
+const walkAudioFolder = async (folderPath) => {
+  if (!isElectron) return [];
+  const filePaths = [];
+  const walk = async (dir) => {
+    let entries;
+    try {
+      entries = await ipcRenderer.invoke('fs:readDir', dir);
+    } catch (err) {
+      console.warn(`Cannot read directory ${dir}:`, err.message);
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory) {
+        await walk(entry.path);
+      } else {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (AUDIO_EXTENSIONS.includes(ext)) {
+          filePaths.push(entry.path);
+        }
+      }
+    }
+  };
+  await walk(folderPath);
+  return filePaths;
+};
 
 export const useAudioStore = create((set, get) => ({
   // State
@@ -43,6 +73,15 @@ export const useAudioStore = create((set, get) => ({
   playlists: {},
   selectedPlaylist: null,
   isPlaylistPaneOpen: false,
+
+  // Library rescan
+  importedFolders: [],
+  isScanning: false,
+
+  // Color / brightness tagging (Rod Modell-style)
+  colorPalette: DEFAULT_COLOR_PALETTE,
+  colorFilter: new Set(),                                    // active color ids; empty = no filter
+  brightnessFilter: { min: 1, max: 10, includeUnrated: true },
 
   // Initialize - load from database
   initialize: async () => {
@@ -93,10 +132,18 @@ export const useAudioStore = create((set, get) => ({
     const files = await db.getAudioFiles();
     const combinationsArray = await db.getCombinations();
     const playlistsArray = await db.getPlaylists();
+    const importedFolders = await db.getImportedFolders();
     const sortColumn = await db.getPreference('sortColumn') || 'name';
     const sortOrder = await db.getPreference('sortOrder') || 'asc';
     const masterVolume = await db.getPreference('masterVolume') || 1.0;
     const isPlaylistPaneOpen = await db.getPreference('isPlaylistPaneOpen') || false;
+    const savedPalette = await db.getPreference('colorPalette');
+    const colorPalette = Array.isArray(savedPalette) && savedPalette.length > 0
+      ? savedPalette
+      : DEFAULT_COLOR_PALETTE;
+    if (!savedPalette) {
+      await db.savePreference('colorPalette', colorPalette);
+    }
 
     // Clean up old and orphaned waveform cache (runs in background)
     db.cleanupWaveformCache().catch(err => {
@@ -119,10 +166,12 @@ export const useAudioStore = create((set, get) => ({
       audioFiles: files,
       combinations,
       playlists,
+      importedFolders,
       sortColumn,
       sortOrder,
       masterVolume: parseFloat(masterVolume),
-      isPlaylistPaneOpen: Boolean(isPlaylistPaneOpen)
+      isPlaylistPaneOpen: Boolean(isPlaylistPaneOpen),
+      colorPalette
     });
 
     // Apply the saved sorting immediately
@@ -130,6 +179,13 @@ export const useAudioStore = create((set, get) => ({
 
     // Update Favorites playlist
     await get().updateFavoritesPlaylist();
+
+    // Kick off background rescan of all imported folders.
+    if (isElectron && importedFolders.length > 0) {
+      get().rescanAllFolders().catch(err => {
+        console.error('Background rescan failed:', err);
+      });
+    }
   },
 
   // Add audio files
@@ -158,6 +214,7 @@ export const useAudioStore = create((set, get) => ({
         location: filePath,
         duration: 0, // Start with 0, analyze later
         date: stats.birthtime,
+        size: stats.size,
         tags: [],
         isFavorite: false
       };
@@ -244,26 +301,177 @@ export const useAudioStore = create((set, get) => ({
       return;
     }
 
-    const audioExtensions = ['.mp3', '.wav', '.aiff', '.flac', '.m4a', '.aac', '.ogg'];
-    const filePaths = [];
+    const filePaths = await walkAudioFolder(folderPath);
+    await get().addAudioFiles(filePaths);
 
-    const scanDir = async (dir) => {
-      const entries = await ipcRenderer.invoke('fs:readDir', dir);
-      
-      for (const entry of entries) {
-        if (entry.isDirectory) {
-          await scanDir(entry.path);
-        } else {
-          const ext = path.extname(entry.name).toLowerCase();
-          if (audioExtensions.includes(ext)) {
-            filePaths.push(entry.path);
+    const record = {
+      path: folderPath,
+      dateAdded: new Date().toISOString(),
+      lastScanned: new Date().toISOString()
+    };
+    await db.saveImportedFolder(record);
+    set(state => ({
+      importedFolders: [
+        ...state.importedFolders.filter(f => f.path !== folderPath),
+        record
+      ]
+    }));
+  },
+
+  // Rescan a single imported folder: detect new, moved, and missing files.
+  rescanFolder: async (folderPath) => {
+    if (!isElectron) return;
+
+    set({ isScanning: true });
+    try {
+      const diskPaths = await walkAudioFolder(folderPath);
+      const diskSet = new Set(diskPaths);
+
+      const { audioFiles } = get();
+      const normalisedFolder = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+      const knownInFolder = audioFiles.filter(f =>
+        f.location === folderPath || f.location.startsWith(normalisedFolder)
+      );
+      const knownPathSet = new Set(knownInFolder.map(f => f.location));
+
+      // Buckets of unmatched entries on each side.
+      const missingKnown = knownInFolder.filter(f => !diskSet.has(f.location));
+      const unknownDisk = diskPaths.filter(p => !knownPathSet.has(p));
+
+      // Also consider library files currently flagged missing (any folder),
+      // so a file moved from folder A into folder B is reunited on B's rescan.
+      const globallyMissing = audioFiles.filter(f =>
+        f.isMissing &&
+        !missingKnown.some(m => m.id === f.id) &&
+        !knownPathSet.has(f.location)
+      );
+      const matchCandidates = [...missingKnown, ...globallyMissing];
+
+      // Move detection: match missing entries to unknown disk files by basename + size.
+      const diskStats = await Promise.all(
+        unknownDisk.map(async p => {
+          try {
+            const stats = await ipcRenderer.invoke('fs:stat', p);
+            return { path: p, size: stats.size, base: path.basename(p) };
+          } catch {
+            return null;
           }
+        })
+      );
+      const availableDisk = diskStats.filter(Boolean);
+
+      const updates = [];            // files whose location changed or isMissing flipped
+      const consumedDiskPaths = new Set();
+
+      for (const known of matchCandidates) {
+        const knownBase = path.basename(known.location);
+        // Prefer basename + size match when a recorded size exists (new files
+        // import with size); fall back to basename-only for legacy entries.
+        const candidate = availableDisk.find(c =>
+          !consumedDiskPaths.has(c.path) &&
+          c.base === knownBase &&
+          (known.size == null || c.size === known.size)
+        );
+        if (!candidate) continue;
+        consumedDiskPaths.add(candidate.path);
+        const updated = { ...known, location: candidate.path, size: candidate.size, isMissing: false };
+        await db.saveAudioFile(updated);
+        updates.push(updated);
+      }
+
+      // Remaining missing: flag isMissing.
+      for (const known of missingKnown) {
+        if (updates.some(u => u.id === known.id)) continue;
+        if (known.isMissing) continue;
+        const flagged = { ...known, isMissing: true };
+        await db.saveAudioFile(flagged);
+        updates.push(flagged);
+      }
+
+      // Any previously-missing entries that are now present should be un-flagged.
+      for (const known of knownInFolder) {
+        if (known.isMissing && diskSet.has(known.location)) {
+          const cleared = { ...known, isMissing: false };
+          await db.saveAudioFile(cleared);
+          updates.push(cleared);
         }
       }
-    };
 
-    await scanDir(folderPath);
-    await get().addAudioFiles(filePaths);
+      // Apply updates to state in one pass.
+      if (updates.length > 0) {
+        const byId = new Map(updates.map(u => [u.id, u]));
+        set(state => ({
+          audioFiles: state.audioFiles.map(f => byId.get(f.id) || f)
+        }));
+      }
+
+      // New files: anything on disk not consumed by a move and not already in DB.
+      const newPaths = unknownDisk.filter(p => !consumedDiskPaths.has(p));
+      if (newPaths.length > 0) {
+        await get().addAudioFiles(newPaths);
+      }
+
+      const relocatedCount = consumedDiskPaths.size;
+      const nowMissingCount = updates.filter(u => u.isMissing).length;
+      console.log(
+        `Rescan ${folderPath}: +${newPaths.length} new, ~${relocatedCount} relocated, ${nowMissingCount} missing`
+      );
+
+      // Update folder's lastScanned.
+      const updatedFolder = {
+        ...(get().importedFolders.find(f => f.path === folderPath) || { path: folderPath, dateAdded: new Date().toISOString() }),
+        lastScanned: new Date().toISOString()
+      };
+      await db.saveImportedFolder(updatedFolder);
+      set(state => ({
+        importedFolders: state.importedFolders.map(f =>
+          f.path === folderPath ? updatedFolder : f
+        )
+      }));
+    } finally {
+      set({ isScanning: false });
+    }
+  },
+
+  rescanAllFolders: async () => {
+    if (!isElectron) return;
+    const folders = get().importedFolders;
+    for (const folder of folders) {
+      try {
+        await get().rescanFolder(folder.path);
+      } catch (err) {
+        console.error(`Rescan failed for ${folder.path}:`, err);
+      }
+    }
+  },
+
+  removeImportedFolder: async (folderPath) => {
+    await db.deleteImportedFolder(folderPath);
+    set(state => ({
+      importedFolders: state.importedFolders.filter(f => f.path !== folderPath)
+    }));
+  },
+
+  // Manually re-link a library entry to a new path on disk.
+  relocateFile: async (fileId, newPath) => {
+    if (!isElectron) return;
+    const { audioFiles } = get();
+    const file = audioFiles.find(f => f.id === fileId);
+    if (!file) return;
+
+    let size = file.size;
+    try {
+      const stats = await ipcRenderer.invoke('fs:stat', newPath);
+      size = stats.size;
+    } catch (err) {
+      console.warn('Could not stat relocated file:', err);
+    }
+
+    const updated = { ...file, location: newPath, size, isMissing: false };
+    await db.saveAudioFile(updated);
+    set(state => ({
+      audioFiles: state.audioFiles.map(f => f.id === fileId ? updated : f)
+    }));
   },
 
   // Delete files
@@ -443,7 +651,7 @@ export const useAudioStore = create((set, get) => ({
   },
 
   playRandomFile: () => {
-    const { audioFiles, playedFiles, selectedPlaylist, playlists, searchText } = get();
+    const { audioFiles, playedFiles, selectedPlaylist, playlists, searchText, colorFilter, brightnessFilter } = get();
 
     // Determine the pool of files to play from
     let filePool = audioFiles;
@@ -461,6 +669,21 @@ export const useAudioStore = create((set, get) => ({
         f.name.toLowerCase().includes(search) ||
         f.location.toLowerCase().includes(search)
       );
+    }
+
+    // Apply color/brightness filter — keep random consistent with the rail
+    if (colorFilter && colorFilter.size > 0) {
+      filePool = filePool.filter(f => f.color && colorFilter.has(f.color));
+    }
+    if (brightnessFilter) {
+      const { min, max, includeUnrated } = brightnessFilter;
+      const isFullRange = min === 1 && max === 10;
+      if (!isFullRange || !includeUnrated) {
+        filePool = filePool.filter(f => {
+          if (f.brightness == null) return includeUnrated;
+          return f.brightness >= min && f.brightness <= max;
+        });
+      }
     }
 
     // Filter unplayed files from the pool
@@ -855,6 +1078,128 @@ export const useAudioStore = create((set, get) => ({
     });
   },
   
+  // --- Color / brightness tagging ---
+
+  setFileColor: async (fileId, colorId) => {
+    const { audioFiles } = get();
+    const file = audioFiles.find(f => f.id === fileId);
+    if (!file) return;
+    const updated = { ...file, color: colorId || null };
+    await db.saveAudioFile(updated);
+    set(state => ({
+      audioFiles: state.audioFiles.map(f => f.id === fileId ? updated : f)
+    }));
+  },
+
+  setFileBrightness: async (fileId, brightness) => {
+    const { audioFiles } = get();
+    const file = audioFiles.find(f => f.id === fileId);
+    if (!file) return;
+    const value = brightness == null ? null : Math.max(1, Math.min(10, parseInt(brightness, 10)));
+    const updated = { ...file, brightness: value };
+    await db.saveAudioFile(updated);
+    set(state => ({
+      audioFiles: state.audioFiles.map(f => f.id === fileId ? updated : f)
+    }));
+  },
+
+  bulkSetColor: async (fileIds, colorId) => {
+    const { audioFiles } = get();
+    const ids = new Set(fileIds);
+    const updates = [];
+    for (const file of audioFiles) {
+      if (!ids.has(file.id)) continue;
+      const next = { ...file, color: colorId || null };
+      await db.saveAudioFile(next);
+      updates.push(next);
+    }
+    const byId = new Map(updates.map(u => [u.id, u]));
+    set(state => ({
+      audioFiles: state.audioFiles.map(f => byId.get(f.id) || f)
+    }));
+  },
+
+  bulkSetBrightness: async (fileIds, brightness) => {
+    const { audioFiles } = get();
+    const ids = new Set(fileIds);
+    const value = brightness == null ? null : Math.max(1, Math.min(10, parseInt(brightness, 10)));
+    const updates = [];
+    for (const file of audioFiles) {
+      if (!ids.has(file.id)) continue;
+      const next = { ...file, brightness: value };
+      await db.saveAudioFile(next);
+      updates.push(next);
+    }
+    const byId = new Map(updates.map(u => [u.id, u]));
+    set(state => ({
+      audioFiles: state.audioFiles.map(f => byId.get(f.id) || f)
+    }));
+  },
+
+  // Filter state
+  toggleColorFilter: (colorId) => {
+    const { colorFilter, isRandomPlaybackActive } = get();
+    const next = new Set(colorFilter);
+    if (next.has(colorId)) next.delete(colorId); else next.add(colorId);
+    const updates = { colorFilter: next };
+    if (isRandomPlaybackActive) updates.playedFiles = new Set();
+    set(updates);
+  },
+
+  setBrightnessFilter: (patch) => {
+    const { brightnessFilter, isRandomPlaybackActive } = get();
+    const next = { ...brightnessFilter, ...patch };
+    if (next.min > next.max) next.min = next.max;
+    const updates = { brightnessFilter: next };
+    if (isRandomPlaybackActive) updates.playedFiles = new Set();
+    set(updates);
+  },
+
+  clearColorBrightnessFilter: () => {
+    set({ colorFilter: new Set(), brightnessFilter: { min: 1, max: 10, includeUnrated: true } });
+  },
+
+  // Palette CRUD
+  savePalette: async (palette) => {
+    await db.savePreference('colorPalette', palette);
+    set({ colorPalette: palette });
+  },
+
+  addPaletteColor: async ({ name, hex }) => {
+    const { colorPalette } = get();
+    const baseId = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'color';
+    let id = baseId;
+    let i = 2;
+    while (colorPalette.some(c => c.id === id)) { id = `${baseId}-${i++}`; }
+    const next = [...colorPalette, { id, name: name.trim(), hex }];
+    await get().savePalette(next);
+    return id;
+  },
+
+  updatePaletteColor: async (id, patch) => {
+    const { colorPalette } = get();
+    const next = colorPalette.map(c => c.id === id ? { ...c, ...patch } : c);
+    await get().savePalette(next);
+  },
+
+  removePaletteColor: async (id) => {
+    const { colorPalette, audioFiles } = get();
+    const next = colorPalette.filter(c => c.id !== id);
+    await get().savePalette(next);
+    // Clear this colour from any tagged files so the UI doesn't show a phantom swatch.
+    const affected = audioFiles.filter(f => f.color === id);
+    if (affected.length > 0) {
+      await get().bulkSetColor(affected.map(f => f.id), null);
+    }
+    // Drop from active filter if present.
+    const { colorFilter } = get();
+    if (colorFilter.has(id)) {
+      const nextFilter = new Set(colorFilter);
+      nextFilter.delete(id);
+      set({ colorFilter: nextFilter });
+    }
+  },
+
   deletePlaylist: async (playlistId) => {
     const { playlists, selectedPlaylist } = get();
 

@@ -1,9 +1,24 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu, systemPreferences, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 
 // Store for window bounds
 let windowBounds = null;
+let boundsSaveTimer = null;
+
+function getBoundsPath() {
+  return path.join(app.getPath('userData'), 'window-bounds.json');
+}
+
+function writeBoundsSync() {
+  if (!windowBounds) return;
+  try {
+    fsSync.writeFileSync(getBoundsPath(), JSON.stringify(windowBounds));
+  } catch (error) {
+    console.error('Error saving window bounds:', error);
+  }
+}
 
 // Disable security features causing macOS crashes
 app.commandLine.appendSwitch('disable-features', 'RendererCodeIntegrity');
@@ -191,15 +206,23 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
   }
 
-  // Save window bounds when resized or moved
+  // Track bounds on resize/move; debounce-flush to disk so an abrupt exit
+  // (crash, force-quit) still leaves a recent snapshot behind.
   const saveBounds = () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      windowBounds = mainWindow.getBounds();
-    }
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    windowBounds = mainWindow.getBounds();
+    if (boundsSaveTimer) clearTimeout(boundsSaveTimer);
+    boundsSaveTimer = setTimeout(writeBoundsSync, 400);
   };
 
   mainWindow.on('resize', saveBounds);
   mainWindow.on('move', saveBounds);
+  mainWindow.on('close', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      windowBounds = mainWindow.getBounds();
+    }
+    writeBoundsSync();
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -209,9 +232,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   // Load saved window bounds
   try {
-    const userDataPath = app.getPath('userData');
-    const boundsPath = path.join(userDataPath, 'window-bounds.json');
-    const boundsData = await fs.readFile(boundsPath, 'utf8');
+    const boundsData = await fs.readFile(getBoundsPath(), 'utf8');
     windowBounds = JSON.parse(boundsData);
   } catch (error) {
     // No saved bounds, use defaults
@@ -220,18 +241,12 @@ app.whenReady().then(async () => {
   createWindow();
 });
 
-app.on('window-all-closed', async () => {
-  // Save window bounds before quitting
-  if (windowBounds) {
-    try {
-      const userDataPath = app.getPath('userData');
-      const boundsPath = path.join(userDataPath, 'window-bounds.json');
-      await fs.writeFile(boundsPath, JSON.stringify(windowBounds));
-    } catch (error) {
-      console.error('Error saving window bounds:', error);
-    }
-  }
+// Synchronous final flush — `before-quit` fires for Cmd+Q on macOS where
+// `window-all-closed` doesn't, and runs before windows are torn down.
+app.on('before-quit', writeBoundsSync);
 
+app.on('window-all-closed', () => {
+  writeBoundsSync();
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -287,6 +302,21 @@ ipcMain.handle('dialog:openFolder', async () => {
     properties: ['openDirectory']
   });
   return result.filePaths;
+});
+
+ipcMain.handle('dialog:locateFile', async (event, { fileName, originalPath }) => {
+  const options = {
+    title: fileName ? `Locate "${fileName}"` : 'Locate File',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Audio Files', extensions: ['mp3', 'wav', 'aiff', 'flac', 'm4a', 'aac', 'ogg'] }
+    ]
+  };
+  if (originalPath) {
+    options.defaultPath = path.dirname(originalPath);
+  }
+  const result = await dialog.showOpenDialog(mainWindow, options);
+  return result.filePaths[0] || null;
 });
 
 ipcMain.handle('fs:readDir', async (event, dirPath) => {
@@ -352,12 +382,13 @@ ipcMain.handle('shell:showInFolder', async (event, filePath) => {
   shell.showItemInFolder(filePath);
 });
 
-ipcMain.handle('show-context-menu', async (event, { fileId, fileName, filePath }) => {
+ipcMain.handle('show-context-menu', async (event, { fileId, fileName, filePath, isMissing }) => {
   return new Promise((resolve) => {
-    const menu = Menu.buildFromTemplate([
+    const template = [
       {
         label: 'Play',
-        click: () => resolve('play')
+        click: () => resolve('play'),
+        enabled: !isMissing
       },
       {
         label: 'Add to Playlist',
@@ -365,15 +396,21 @@ ipcMain.handle('show-context-menu', async (event, { fileId, fileName, filePath }
       },
       {
         label: 'Show in Finder',
-        click: () => resolve('show-in-finder')
+        click: () => resolve('show-in-finder'),
+        enabled: !isMissing
       },
       { type: 'separator' },
+      {
+        label: 'Locate…',
+        click: () => resolve('locate')
+      },
       {
         label: 'Delete from Archive',
         click: () => resolve('delete')
       }
-    ]);
-    
+    ];
+    const menu = Menu.buildFromTemplate(template);
+
     menu.popup({
       window: BrowserWindow.fromWebContents(event.sender),
       callback: () => resolve(null)

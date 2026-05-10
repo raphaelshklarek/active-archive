@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import { useAudioStore } from '../store/audioStore';
 import WaveformPlayer from './WaveformPlayer';
+import ColorBrightnessPopover from './ColorBrightnessPopover';
+import ColorFilterRail from './ColorFilterRail';
+import PaletteEditor from './PaletteEditor';
 import * as db from '../database';
 
 const { ipcRenderer } = window.require('electron');
@@ -37,8 +40,31 @@ const ArchiveView = () => {
     addToPlaylist,
     selectPlaylist,
     deletePlaylist,
-    toggleFavorite
+    toggleFavorite,
+    importedFolders,
+    isScanning,
+    rescanFolder,
+    rescanAllFolders,
+    removeImportedFolder,
+    relocateFile,
+    colorPalette,
+    colorFilter,
+    brightnessFilter,
+    setFileColor,
+    setFileBrightness,
+    bulkSetColor,
+    bulkSetBrightness
   } = useAudioStore();
+
+  const [colorPopover, setColorPopover] = useState(null);     // { fileId, x, y }
+  const [bulkPopover, setBulkPopover] = useState(null);       // { x, y }
+  const [showPaletteEditor, setShowPaletteEditor] = useState(false);
+  const [tagsPanelOpen, setTagsPanelOpen] = useState(false);
+  const paletteById = React.useMemo(() => {
+    const m = new Map();
+    colorPalette.forEach(c => m.set(c.id, c));
+    return m;
+  }, [colorPalette]);
 
   const [showNewPlaylistDialog, setShowNewPlaylistDialog] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
@@ -50,39 +76,79 @@ const ArchiveView = () => {
   const [listHeight, setListHeight] = useState(600); // Default height
   const listContainerRef = useRef(null);
   const listRef = useRef(null);
+  const listApiRef = useRef(null);
   const headerRef = useRef(null);
 
-  // Column widths state
+  // Column widths state (pixels). The last column (location) flex-grows to
+  // fill any leftover space, so the table always ends flush with the right
+  // edge; widening any column makes the row exceed the container and the
+  // horizontal scrollbar appears.
   const [columnWidths, setColumnWidths] = useState({
-    favorite: 4, // percentages
-    name: 36,
-    duration: 15,
-    date: 20,
-    location: 25
+    favorite: 40,
+    color: 60,
+    brightness: 80,
+    name: 360,
+    duration: 100,
+    date: 140,
+    location: 380
   });
-  
+
   const [isResizing, setIsResizing] = useState(false);
   const resizingColumn = useRef(null);
   const startX = useRef(0);
   const startWidth = useRef(0);
   const justFinishedResizing = useRef(false);
-  
+
   // Sidebar resizing state
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const sidebarStartX = useRef(0);
   const sidebarStartWidth = useRef(0);
 
+  // Per-cell flex style. The location column grows to absorb leftover space
+  // when total width is below the container; otherwise everything is fixed.
+  // `minWidth: 0` overrides flex's default min-content behavior so long
+  // unbroken paths don't push the cell wider than its set width.
+  const cellStyle = (col) => col === 'location'
+    ? { flex: `1 0 ${columnWidths[col]}px`, minWidth: 0 }
+    : { width: `${columnWidths[col]}px`, flexShrink: 0, minWidth: 0 };
+  const totalColumnsPx = Object.values(columnWidths).reduce((s, v) => s + v, 0);
+  // Row is 100% of its containing element (the list inner / header inner),
+  // which is itself forced to at least `totalColumnsPx` wide. So when the
+  // window is wider than the columns the row stretches and `location`
+  // flex-grows; when narrower, the inner overflows and horizontal scroll
+  // engages, with the row exactly matching the inner width — no dead space.
+  const rowStyle = { display: 'flex', width: '100%', minWidth: `${totalColumnsPx}px`, boxSizing: 'border-box' };
+
+  // Force the virtualized list's inner element to be at least as wide as the
+  // sum of column widths, so when columns exceed the body the outer element
+  // (overflow: auto) shows a horizontal scrollbar. The `file-list-inner` class
+  // also paints the zebra gradient so it scrolls with the rows (the body's
+  // gradient covers the empty space below the last row when the list doesn't
+  // fill the viewport).
+  const ListInner = React.useMemo(
+    () => React.forwardRef(({ style, ...rest }, ref) => (
+      <div
+        ref={ref}
+        className="file-list-inner"
+        style={{ ...style, minWidth: `${totalColumnsPx}px` }}
+        {...rest}
+      />
+    )),
+    [totalColumnsPx]
+  );
+
   const currentFile = audioFiles.find(f => f.id === currentlyPlaying);
 
   // Load saved column widths and sidebar width from database
   useEffect(() => {
     const loadSavedDimensions = async () => {
-      const savedColumnWidths = await db.getPreference('columnWidths');
+      const savedColumnWidths = await db.getPreference('columnWidthsPx');
       const savedSidebarWidth = await db.getPreference('sidebarWidth');
 
       if (savedColumnWidths) {
-        setColumnWidths(savedColumnWidths);
+        // Merge with defaults so newly-added columns stay sized.
+        setColumnWidths(prev => ({ ...prev, ...savedColumnWidths }));
       }
       if (savedSidebarWidth) {
         setSidebarWidth(savedSidebarWidth);
@@ -102,12 +168,24 @@ const ArchiveView = () => {
   }
 
   // Then apply search filter
+  const searchLower = searchText.toLowerCase();
+  const isFullBrightnessRange =
+    brightnessFilter.min === 1 && brightnessFilter.max === 10 && brightnessFilter.includeUnrated;
   const filteredFiles = displayFiles.filter(file => {
-    if (!searchText) return true;
-    return (
-      file.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      file.location.toLowerCase().includes(searchText.toLowerCase())
-    );
+    if (searchText && !file.name.toLowerCase().includes(searchLower) && !file.location.toLowerCase().includes(searchLower)) {
+      return false;
+    }
+    if (colorFilter.size > 0 && (!file.color || !colorFilter.has(file.color))) {
+      return false;
+    }
+    if (!isFullBrightnessRange) {
+      if (file.brightness == null) {
+        if (!brightnessFilter.includeUnrated) return false;
+      } else if (file.brightness < brightnessFilter.min || file.brightness > brightnessFilter.max) {
+        return false;
+      }
+    }
+    return true;
   });
 
   const handleAdd = async () => {
@@ -154,11 +232,20 @@ const ArchiveView = () => {
     const action = await ipcRenderer.invoke('show-context-menu', {
       fileId: file.id,
       fileName: file.name,
-      filePath: file.location
+      filePath: file.location,
+      isMissing: !!file.isMissing
     });
-    
+
     if (action === 'play') {
       togglePlayback(file.id);
+    } else if (action === 'locate') {
+      const newPath = await ipcRenderer.invoke('dialog:locateFile', {
+        fileName: file.name,
+        originalPath: file.location
+      });
+      if (newPath) {
+        await relocateFile(file.id, newPath);
+      }
     } else if (action === 'add-to-playlist') {
       // If file is selected and we have multiple selections, use all selected
       if (isFileSelected && hasMultipleSelected) {
@@ -264,12 +351,10 @@ const ArchiveView = () => {
   };
 
   const handleColumnResize = (e) => {
-    if (!isResizing || !headerRef.current) return;
+    if (!isResizing) return;
 
-    const headerWidth = headerRef.current.offsetWidth;
     const deltaX = e.clientX - startX.current;
-    const deltaPercent = (deltaX / headerWidth) * 100;
-    const newWidth = Math.max(10, startWidth.current + deltaPercent);
+    const newWidth = Math.max(32, startWidth.current + deltaX);
 
     setColumnWidths(prev => ({
       ...prev,
@@ -284,8 +369,7 @@ const ArchiveView = () => {
         justFinishedResizing.current = false;
       }, 100);
 
-      // Save column widths to database
-      db.savePreference('columnWidths', columnWidths);
+      db.savePreference('columnWidthsPx', columnWidths);
     }
     setIsResizing(false);
     resizingColumn.current = null;
@@ -360,6 +444,28 @@ const ArchiveView = () => {
       };
     }
   }, [isResizingSidebar]);
+
+  // Mirror the list's horizontal scroll on the header so column titles stay
+  // aligned with their cells when location (or any column) is wider than the body.
+  React.useEffect(() => {
+    const outer = listRef.current;
+    if (!outer) return;
+    const sync = () => {
+      const inner = headerRef.current?.firstElementChild;
+      if (inner) inner.style.transform = `translateX(${-outer.scrollLeft}px)`;
+    };
+    outer.addEventListener('scroll', sync, { passive: true });
+    sync();
+    return () => outer.removeEventListener('scroll', sync);
+  }, [filteredFiles.length]);
+
+  // Reveal the currently playing file in the list — handy for random playback,
+  // where the played file might be far outside the viewport.
+  useEffect(() => {
+    if (!currentlyPlaying || !listApiRef.current) return;
+    const idx = filteredFiles.findIndex(f => f.id === currentlyPlaying);
+    if (idx >= 0) listApiRef.current.scrollToItem(idx, 'smart');
+  }, [currentlyPlaying]);
 
   const handleHeaderClick = (column) => {
     // Don't sort if we just finished resizing
@@ -463,6 +569,54 @@ const ArchiveView = () => {
               ))
             )}
           </div>
+
+          {/* Folders section */}
+          <div className="folders-header">
+            <span>Folders</span>
+            <button
+              onClick={() => rescanAllFolders()}
+              title="Rescan all folders"
+              disabled={isScanning || importedFolders.length === 0}
+            >
+              {isScanning ? '…' : '↻'}
+            </button>
+          </div>
+          <div className="folders-list">
+            {importedFolders.length === 0 ? (
+              <div className="empty-folders">No folders yet</div>
+            ) : (
+              [...importedFolders]
+                .sort((a, b) => a.path.localeCompare(b.path))
+                .map(folder => {
+                  const name = folder.path.split('/').filter(Boolean).pop() || folder.path;
+                  return (
+                    <div key={folder.path} className="folder-item" title={folder.path}>
+                      <div className="folder-name">{name}</div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); rescanFolder(folder.path); }}
+                        className="folder-rescan"
+                        title="Rescan this folder"
+                        disabled={isScanning}
+                      >
+                        ↻
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Stop tracking "${name}"? (Files remain in library.)`)) {
+                            removeImportedFolder(folder.path);
+                          }
+                        }}
+                        className="folder-remove"
+                        title="Stop tracking folder"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })
+            )}
+          </div>
         </div>
       )}
 
@@ -523,12 +677,30 @@ const ArchiveView = () => {
           >
             Add
           </button>
-          <button 
+          <button
             className={`toolbar-button ${isRandomPlaybackActive ? 'active' : ''}`}
             onClick={toggleRandomPlayback}
             title="Random Playback"
           >
             Random
+          </button>
+          <button
+            className={`toolbar-button ${tagsPanelOpen
+              || colorFilter.size > 0
+              || brightnessFilter.min !== 1
+              || brightnessFilter.max !== 10
+              || !brightnessFilter.includeUnrated ? 'active' : ''}`}
+            onClick={() => setTagsPanelOpen(o => !o)}
+            title="Tags"
+          >
+            Tags{(() => {
+              const parts = [];
+              if (colorFilter.size > 0) parts.push(`${colorFilter.size}`);
+              if (brightnessFilter.min !== 1 || brightnessFilter.max !== 10) {
+                parts.push(`${brightnessFilter.min}–${brightnessFilter.max}`);
+              }
+              return parts.length ? ` (${parts.join(', ')})` : '';
+            })()}
           </button>
           {selectedFiles.size > 0 && (
             <>
@@ -598,18 +770,61 @@ const ArchiveView = () => {
           />
         </div>
 
-                <div className="file-table-container">
+        {tagsPanelOpen && (
+          <ColorFilterRail
+            onOpenPalette={() => setShowPaletteEditor(true)}
+            selectedCount={selectedFiles.size}
+            onTagColor={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setBulkPopover({ mode: 'color', x: rect.left, y: rect.bottom + 4 });
+            }}
+            onTagBrightness={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              setBulkPopover({ mode: 'brightness', x: rect.left, y: rect.bottom + 4 });
+            }}
+          />
+        )}
+
+        <div className="file-table-container">
           <div className="file-table-header" ref={headerRef}>
-            <div style={{ display: 'flex', width: '100%' }}>
+            <div style={rowStyle}>
               <div
                 className="file-table-header-cell favorite-header"
-                style={{ width: `${columnWidths.favorite}%`, textAlign: 'center' }}
+                style={{ ...cellStyle('favorite'), textAlign: 'center' }}
               >
                 ★
+                <div
+                  className="column-resize-handle"
+                  onMouseDown={(e) => handleColumnResizeStart(e, 'favorite')}
+                />
+              </div>
+              <div
+                className="file-table-header-cell color-header"
+                style={{ ...cellStyle('color'), textAlign: 'center' }}
+                onClick={() => handleHeaderClick('color')}
+                title="Sort by colour"
+              >
+                COLOR {sortColumn === 'color' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <div
+                  className="column-resize-handle"
+                  onMouseDown={(e) => handleColumnResizeStart(e, 'color')}
+                />
+              </div>
+              <div
+                className="file-table-header-cell brightness-header"
+                style={{ ...cellStyle('brightness'), textAlign: 'center' }}
+                onClick={() => handleHeaderClick('brightness')}
+                title="Sort by brightness"
+              >
+                BRIGHTNESS {sortColumn === 'brightness' && (sortOrder === 'asc' ? '↑' : '↓')}
+                <div
+                  className="column-resize-handle"
+                  onMouseDown={(e) => handleColumnResizeStart(e, 'brightness')}
+                />
               </div>
               <div
                 className="file-table-header-cell"
-                style={{ width: `${columnWidths.name}%` }}
+                style={cellStyle('name')}
                 onClick={() => handleHeaderClick('name')}
               >
                 NAME {sortColumn === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
@@ -620,7 +835,7 @@ const ArchiveView = () => {
               </div>
               <div
                 className="file-table-header-cell"
-                style={{ width: `${columnWidths.duration}%` }}
+                style={cellStyle('duration')}
                 onClick={() => handleHeaderClick('duration')}
               >
                 DURATION {sortColumn === 'duration' && (sortOrder === 'asc' ? '↑' : '↓')}
@@ -631,7 +846,7 @@ const ArchiveView = () => {
               </div>
               <div
                 className="file-table-header-cell"
-                style={{ width: `${columnWidths.date}%` }}
+                style={cellStyle('date')}
                 onClick={() => handleHeaderClick('date')}
               >
                 DATE {sortColumn === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
@@ -642,16 +857,11 @@ const ArchiveView = () => {
               </div>
               <div
                 className="file-table-header-cell"
-                style={{ width: `${columnWidths.location}%` }}
+                style={cellStyle('location')}
                 onClick={() => handleHeaderClick('location')}
               >
                 LOCATION {sortColumn === 'location' && (sortOrder === 'asc' ? '↑' : '↓')}
-                <div
-                  className="column-resize-handle"
-                  onMouseDown={(e) => handleColumnResizeStart(e, 'location')}
-                />
               </div>
-              <div style={{ width: '15px', flexShrink: 0 }}></div> {/* Scrollbar spacer */}
             </div>
           </div>
           <div className="file-table-body" ref={listContainerRef}>
@@ -664,6 +874,8 @@ const ArchiveView = () => {
                 itemSize={28}
                 width="100%"
                 outerRef={listRef}
+                ref={listApiRef}
+                innerElementType={ListInner}
               >
                 {({ index, style }) => {
                   const file = filteredFiles[index];
@@ -676,7 +888,16 @@ const ArchiveView = () => {
                   const handleCellMouseUp = (e) => {
                     e.stopPropagation();
                     if (e.detail === 2) {
-                      togglePlayback(file.id);
+                      if (file.isMissing) {
+                        ipcRenderer.invoke('dialog:locateFile', {
+                          fileName: file.name,
+                          originalPath: file.location
+                        }).then(newPath => {
+                          if (newPath) relocateFile(file.id, newPath);
+                        });
+                      } else {
+                        togglePlayback(file.id);
+                      }
                     } else if (e.detail === 1) {
                       if (e.shiftKey && lastClickedIndex !== null) {
                         const start = Math.min(lastClickedIndex, index);
@@ -698,18 +919,16 @@ const ArchiveView = () => {
                       key={file.id}
                       style={{
                         ...style,
-                        display: 'flex',
-                        width: '100%',
-                        boxSizing: 'border-box'
+                        ...rowStyle
                       }}
                       draggable="true"
                       onDragStart={(e) => handleDragStart(e, file.id)}
-                      className={`file-table-row ${index % 2 === 0 ? 'even' : ''} ${selectedFiles.has(file.id) ? 'selected' : ''} ${currentlyPlaying === file.id ? 'playing' : ''}`}
+                      className={`file-table-row ${index % 2 === 0 ? 'even' : ''} ${selectedFiles.has(file.id) ? 'selected' : ''} ${currentlyPlaying === file.id ? 'playing' : ''} ${file.isMissing ? 'missing' : ''}`}
                       onContextMenu={(e) => handleContextMenu(e, file)}
                     >
                       <div
                         className="file-table-cell file-favorite"
-                        style={{ width: `${columnWidths.favorite}%`, flexShrink: 0, textAlign: 'center', cursor: 'pointer' }}
+                        style={{ ...cellStyle('favorite'), textAlign: 'center', cursor: 'pointer' }}
                         draggable="false"
                         onMouseDown={(e) => {
                           e.stopPropagation();
@@ -725,17 +944,51 @@ const ArchiveView = () => {
                         </span>
                       </div>
                       <div
+                        className="file-table-cell file-color"
+                        style={{ ...cellStyle('color'), textAlign: 'center', cursor: 'pointer' }}
+                        draggable="false"
+                        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                        onMouseUp={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setColorPopover({ fileId: file.id, mode: 'color', x: rect.left, y: rect.bottom + 2 });
+                        }}
+                        title={file.color
+                          ? (paletteById.get(file.color)?.name || file.color)
+                          : 'Tag colour'}
+                      >
+                        <span
+                          className="row-swatch"
+                          style={{ background: paletteById.get(file.color)?.hex || 'transparent', borderColor: file.color ? 'transparent' : 'var(--swatch-empty-border, rgba(0,0,0,0.25))' }}
+                        />
+                      </div>
+                      <div
+                        className="file-table-cell file-brightness"
+                        style={{ ...cellStyle('brightness'), textAlign: 'center', cursor: 'pointer' }}
+                        draggable="false"
+                        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                        onMouseUp={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setColorPopover({ fileId: file.id, mode: 'brightness', x: rect.left, y: rect.bottom + 2 });
+                        }}
+                        title={file.brightness != null ? `Brightness ${file.brightness}` : 'Set brightness'}
+                      >
+                        <span className="row-brightness">{file.brightness ?? ''}</span>
+                      </div>
+                      <div
                         className="file-table-cell file-name"
-                        style={{ width: `${columnWidths.name}%`, flexShrink: 0, cursor: 'pointer', pointerEvents: 'auto' }}
+                        style={{ ...cellStyle('name'), cursor: 'pointer', pointerEvents: 'auto' }}
                         draggable="false"
                         onMouseDown={handleCellMouseDown}
                         onMouseUp={handleCellMouseUp}
                       >
                         {file.name}
+                        {file.isMissing && <span className="missing-badge" title="File missing from disk">missing</span>}
                       </div>
                       <div
                         className="file-table-cell file-duration"
-                        style={{ width: `${columnWidths.duration}%`, flexShrink: 0, cursor: 'pointer' }}
+                        style={{ ...cellStyle('duration'), cursor: 'pointer' }}
                         draggable="false"
                         onMouseDown={handleCellMouseDown}
                         onMouseUp={handleCellMouseUp}
@@ -744,7 +997,7 @@ const ArchiveView = () => {
                       </div>
                       <div
                         className="file-table-cell file-date"
-                        style={{ width: `${columnWidths.date}%`, flexShrink: 0, cursor: 'pointer' }}
+                        style={{ ...cellStyle('date'), cursor: 'pointer' }}
                         draggable="false"
                         onMouseDown={handleCellMouseDown}
                         onMouseUp={handleCellMouseUp}
@@ -753,7 +1006,7 @@ const ArchiveView = () => {
                       </div>
                       <div
                         className="file-table-cell file-location"
-                        style={{ width: `${columnWidths.location}%`, flexShrink: 0, cursor: 'pointer' }}
+                        style={{ ...cellStyle('location'), cursor: 'pointer' }}
                         draggable="false"
                         onMouseDown={handleCellMouseDown}
                         onMouseUp={handleCellMouseUp}
@@ -768,6 +1021,44 @@ const ArchiveView = () => {
           </div>
         </div>
       </div>
+
+      {/* Single-file popover (colour OR brightness, never both) */}
+      {colorPopover && (() => {
+        const target = audioFiles.find(f => f.id === colorPopover.fileId);
+        if (!target) return null;
+        return (
+          <ColorBrightnessPopover
+            position={{ x: colorPopover.x, y: colorPopover.y }}
+            palette={colorPalette}
+            mode={colorPopover.mode}
+            color={target.color}
+            brightness={target.brightness}
+            onColor={(c) => setFileColor(target.id, c)}
+            onBrightness={(b) => setFileBrightness(target.id, b)}
+            onClose={() => setColorPopover(null)}
+            title={target.name}
+          />
+        );
+      })()}
+
+      {/* Bulk popover (colour OR brightness, never both) */}
+      {bulkPopover && (
+        <ColorBrightnessPopover
+          position={{ x: bulkPopover.x, y: bulkPopover.y }}
+          palette={colorPalette}
+          mode={bulkPopover.mode}
+          color={null}
+          brightness={null}
+          onColor={(c) => bulkSetColor(Array.from(selectedFiles), c)}
+          onBrightness={(b) => bulkSetBrightness(Array.from(selectedFiles), b)}
+          onClose={() => setBulkPopover(null)}
+          title={`${selectedFiles.size} file(s)`}
+        />
+      )}
+
+      {showPaletteEditor && (
+        <PaletteEditor onClose={() => setShowPaletteEditor(false)} />
+      )}
 
       {/* New Playlist Dialog */}
       {showNewPlaylistDialog && (
