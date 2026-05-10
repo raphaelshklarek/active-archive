@@ -24,6 +24,7 @@ body {
   color: #333;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {

@@ -38,6 +38,9 @@
   "build": {
     "appId": "com.activearchive.app",
     "productName": "Active Archive",
+    "directories": {
+      "output": "release/${os}"
+    },
     "files": [
       "dist/**/*",
       "main.js"
