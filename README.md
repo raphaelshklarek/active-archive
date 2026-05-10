@@ -18,6 +18,10 @@ I hope you enjoy it and that it sparks your creativity. Peace and one love.
 - Fast search and sorting
 - Random playback mode
 - Persistent waveform caching with IndexedDB
+- Tag each sound with a colour and a brightness rating (1–10), inspired by Rod Modell's library system — build a mix from "a green 7"
+- Filter the archive by colour with the side rail, and edit the palette to your own taste
+- Remember imported folders and rescan them — files moved between folders are matched by name + size so your tags, colour, and brightness travel with them
+- Locate missing files via a native dialog without losing their metadata
 
 ![Archive View](assets/archive-view.png)
 ![Archive View - Dark Mode](assets/archive-view-dark.png)
