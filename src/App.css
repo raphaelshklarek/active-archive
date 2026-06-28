@@ -2017,6 +2017,93 @@ body {
   cursor: pointer;
 }
 
+/* Duration range: two overlapping range inputs over a shared track. The inputs
+   themselves ignore pointer events so clicks fall through to whichever thumb is
+   under the cursor; only the thumbs are interactive. */
+.duration-range {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.duration-slider {
+  position: relative;
+  width: 220px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+/* Matches the volume sliders: 6px rounded track, white circular thumb. */
+.duration-track,
+.duration-track-fill {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 6px;
+  border-radius: 3px;
+}
+
+.duration-track {
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.duration-track-fill {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.duration-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.duration-thumb:focus { outline: none; }
+
+.duration-thumb::-webkit-slider-runnable-track {
+  background: transparent;
+  border: none;
+  height: 14px;
+}
+
+.duration-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.duration-thumb::-moz-range-thumb {
+  pointer-events: auto;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.duration-readout {
+  font-variant-numeric: tabular-nums;
+  min-width: 96px;
+  opacity: 0.8;
+}
+
 /* Row swatch + brightness number */
 .file-color {
   display: flex;
@@ -2285,6 +2372,16 @@ body {
     border-color: rgba(255, 255, 255, 0.35);
   }
   .tag-section-divider { background: rgba(255, 255, 255, 0.15); }
+  .duration-track { background: rgba(255, 255, 255, 0.15); }
+  .duration-track-fill { background: rgba(255, 255, 255, 0.3); }
+  .duration-thumb::-webkit-slider-thumb {
+    background: #3a3a3a;
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+  .duration-thumb::-moz-range-thumb {
+    background: #3a3a3a;
+    border-color: rgba(255, 255, 255, 0.25);
+  }
   .color-popover {
     background: #2a2a2a;
     border-color: rgba(255, 255, 255, 0.12);

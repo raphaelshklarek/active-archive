@@ -2,7 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { useAudioStore } from '../store/audioStore';
 import { saveWaveform, getWaveform, saveAudioFile } from '../database';
-import { convertAiffToWav, isAiffFile } from '../utils/audioConverter';
+import { convertAiffToWav, isAiffFile, readWavSampleRate } from '../utils/audioConverter';
+import { getPlayable48kWav } from '../utils/playbackCache';
 import { useAudioMeter } from '../hooks/useAudioMeter';
 import { renderAmplitudeColoredWaveform } from '../utils/waveformRenderer';
 
@@ -156,6 +157,10 @@ const WaveformPlayer = ({ file }) => {
 
     isMounted.current = true;
 
+    // Play through WaveSurfer's default streaming <audio> element. It starts
+    // fast and never holds the whole decoded file in memory, which keeps random
+    // mode and rapid track switching smooth. The only files it can't decode are
+    // WAV/AIFF above 48 kHz; those are transcoded to 48 kHz in loadAudio.
     const ws = WaveSurfer.create({
       container: waveformRef.current,
       waveColor: 'rgba(100, 100, 100, 0.3)',
@@ -339,14 +344,22 @@ const WaveformPlayer = ({ file }) => {
 
         if (isAiffFile(file.location)) {
           wavBuffer = convertAiffToWav(fileArrayBuffer);
-          blob = new Blob([wavBuffer], { type: 'audio/wav' });
         } else if (isWavFile(file.location)) {
           wavBuffer = fileArrayBuffer;
-          const mimeType = getMimeType(file.location);
-          blob = new Blob([fileBuffer], { type: mimeType });
+        }
+
+        // Build the blob the <audio> element will stream. Chromium can't decode
+        // WAV above 48 kHz, so transcode those to a cached 48 kHz WAV; every
+        // other file streams its original bytes unchanged.
+        if (wavBuffer && readWavSampleRate(wavBuffer) > 48000) {
+          const cacheId = `${file.location}|${fileBuffer.byteLength}`;
+          const wav48 = await getPlayable48kWav(wavBuffer, cacheId);
+          if (cancelled) return;
+          blob = new Blob([wav48], { type: 'audio/wav' });
+        } else if (isAiffFile(file.location)) {
+          blob = new Blob([wavBuffer], { type: 'audio/wav' });
         } else {
-          const mimeType = getMimeType(file.location);
-          blob = new Blob([fileBuffer], { type: mimeType });
+          blob = new Blob([fileBuffer], { type: getMimeType(file.location) });
         }
 
         if (cancelled) return;

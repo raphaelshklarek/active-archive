@@ -4,6 +4,7 @@ import { useAudioStore } from '../store/audioStore';
 import WaveformPlayer from './WaveformPlayer';
 import ColorBrightnessPopover from './ColorBrightnessPopover';
 import ColorFilterRail from './ColorFilterRail';
+import DurationFilterPanel from './DurationFilterPanel';
 import PaletteEditor from './PaletteEditor';
 import * as db from '../database';
 
@@ -50,6 +51,7 @@ const ArchiveView = () => {
     colorPalette,
     colorFilter,
     brightnessFilter,
+    durationFilter,
     setFileColor,
     setFileBrightness,
     bulkSetColor,
@@ -60,6 +62,7 @@ const ArchiveView = () => {
   const [bulkPopover, setBulkPopover] = useState(null);       // { x, y }
   const [showPaletteEditor, setShowPaletteEditor] = useState(false);
   const [tagsPanelOpen, setTagsPanelOpen] = useState(false);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const paletteById = React.useMemo(() => {
     const m = new Map();
     colorPalette.forEach(c => m.set(c.id, c));
@@ -184,6 +187,11 @@ const ArchiveView = () => {
       } else if (file.brightness < brightnessFilter.min || file.brightness > brightnessFilter.max) {
         return false;
       }
+    }
+    if (durationFilter.min > 0 || durationFilter.max != null) {
+      const d = file.duration || 0;
+      if (d < durationFilter.min) return false;
+      if (durationFilter.max != null && d > durationFilter.max) return false;
     }
     return true;
   });
@@ -702,6 +710,15 @@ const ArchiveView = () => {
               return parts.length ? ` (${parts.join(', ')})` : '';
             })()}
           </button>
+          <button
+            className={`toolbar-button ${filterPanelOpen
+              || durationFilter.min > 0
+              || durationFilter.max != null ? 'active' : ''}`}
+            onClick={() => setFilterPanelOpen(o => !o)}
+            title="Filter"
+          >
+            Filter{(durationFilter.min > 0 || durationFilter.max != null) ? ' •' : ''}
+          </button>
           {selectedFiles.size > 0 && (
             <>
               <button
@@ -784,6 +801,8 @@ const ArchiveView = () => {
             }}
           />
         )}
+
+        {filterPanelOpen && <DurationFilterPanel />}
 
         <div className="file-table-container">
           <div className="file-table-header" ref={headerRef}>

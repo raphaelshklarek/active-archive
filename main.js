@@ -382,6 +382,15 @@ ipcMain.handle('shell:showInFolder', async (event, filePath) => {
   shell.showItemInFolder(filePath);
 });
 
+// Persistent on-disk cache for transcoded playback files (e.g. >48 kHz WAVs
+// downsampled to 48 kHz so Chromium's <audio> element can stream them). Lives
+// under userData so it survives restarts and is created on first use.
+ipcMain.handle('playback:getCacheDir', async () => {
+  const dir = path.join(app.getPath('userData'), 'playback-cache');
+  await fs.mkdir(dir, { recursive: true });
+  return dir;
+});
+
 ipcMain.handle('show-context-menu', async (event, { fileId, fileName, filePath, isMissing }) => {
   return new Promise((resolve) => {
     const template = [

@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import { useAudioStore } from '../store/audioStore';
 import { getWaveform, saveWaveform } from '../database';
-import { convertAiffToWav, isAiffFile } from '../utils/audioConverter';
+import { convertAiffToWav, isAiffFile, readWavSampleRate } from '../utils/audioConverter';
+import { getPlayable48kWav } from '../utils/playbackCache';
 import { useAudioMeter } from '../hooks/useAudioMeter';
 import { renderAmplitudeColoredWaveform } from '../utils/waveformRenderer';
 
@@ -182,7 +183,9 @@ const TrackCard = ({ track }) => {
     const initTimer = setTimeout(() => {
       if (!isMounted.current || !waveformRef.current) return;
 
-      // Create WaveSurfer instance
+      // Create WaveSurfer instance. Uses the default streaming <audio> element
+      // (see WaveformPlayer for rationale); >48 kHz files are transcoded to a
+      // cached 48 kHz WAV in loadAudio since Chromium can't decode them directly.
       wavesurfer.current = WaveSurfer.create({
         container: waveformRef.current,
         waveColor: 'rgba(100, 100, 100, 0.3)',
@@ -219,15 +222,23 @@ const TrackCard = ({ track }) => {
           if (isAiffFile(file.location)) {
             // Convert AIFF to WAV for browser compatibility
             wavBuffer = convertAiffToWav(fileArrayBuffer);
-            blob = new Blob([wavBuffer], { type: 'audio/wav' });
           } else if (isWavFile(file.location)) {
             wavBuffer = fileArrayBuffer;
-            const mimeType = getMimeType(file.location);
-            blob = new Blob([fileBuffer], { type: mimeType });
-          } else {
-            const mimeType = getMimeType(file.location);
-            blob = new Blob([fileBuffer], { type: mimeType });
           }
+
+          // Stream original bytes via the <audio> element; only transcode the
+          // WAV/AIFF files above 48 kHz that Chromium can't decode (cached).
+          if (wavBuffer && readWavSampleRate(wavBuffer) > 48000) {
+            const cacheId = `${file.location}|${fileBuffer.byteLength}`;
+            const wav48 = await getPlayable48kWav(wavBuffer, cacheId);
+            blob = new Blob([wav48], { type: 'audio/wav' });
+          } else if (isAiffFile(file.location)) {
+            blob = new Blob([wavBuffer], { type: 'audio/wav' });
+          } else {
+            blob = new Blob([fileBuffer], { type: getMimeType(file.location) });
+          }
+
+          if (!isMounted.current || !wavesurfer.current) return;
 
           const blobUrl = URL.createObjectURL(blob);
           blobUrlRef.current = blobUrl; // Store URL for cleanup

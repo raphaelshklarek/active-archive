@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as db from '../database';
 import { DEFAULT_COLOR_PALETTE } from '../database';
+import { readWavDuration } from '../utils/audioConverter';
 
 // Use built-in crypto for UUID generation
 const uuidv4 = () => crypto.randomUUID();
@@ -82,6 +83,9 @@ export const useAudioStore = create((set, get) => ({
   colorPalette: DEFAULT_COLOR_PALETTE,
   colorFilter: new Set(),                                    // active color ids; empty = no filter
   brightnessFilter: { min: 1, max: 10, includeUnrated: true },
+
+  // Duration filter (seconds). max === null means "no upper limit".
+  durationFilter: { min: 0, max: null },
 
   // Initialize - load from database
   initialize: async () => {
@@ -241,24 +245,41 @@ export const useAudioStore = create((set, get) => ({
           const result = await ipcRenderer.invoke('audio:readFileForAnalysis', file.location);
 
           if (result && result.buffer) {
-            // Create blob URL (same approach as WaveformPlayer)
-            const uint8Array = new Uint8Array(result.buffer);
-            const blob = new Blob([uint8Array], { type: result.mimeType });
-            const blobUrl = URL.createObjectURL(blob);
+            const uint8Array = result.buffer instanceof Uint8Array
+              ? result.buffer
+              : new Uint8Array(result.buffer);
 
-            // Get duration using Audio element
-            const duration = await new Promise((resolve) => {
-              const audio = new Audio();
-              audio.addEventListener('loadedmetadata', () => {
-                resolve(audio.duration);
-                URL.revokeObjectURL(blobUrl); // Clean up
+            let duration = 0;
+
+            // WAV (and AIFF, which the main process converts to WAV): read the
+            // duration straight from the header. This is instant and, crucially,
+            // works for sample rates above 48 kHz — the <audio> element below
+            // can't load those, which is why 96 kHz imports got no duration.
+            if (result.mimeType === 'audio/wav') {
+              const ab = uint8Array.buffer.slice(
+                uint8Array.byteOffset,
+                uint8Array.byteOffset + uint8Array.byteLength
+              );
+              duration = readWavDuration(ab);
+            }
+
+            // Compressed formats (MP3, etc.) — fall back to the media element.
+            if (!duration || duration <= 0) {
+              const blob = new Blob([uint8Array], { type: result.mimeType });
+              const blobUrl = URL.createObjectURL(blob);
+              duration = await new Promise((resolve) => {
+                const audio = new Audio();
+                audio.addEventListener('loadedmetadata', () => {
+                  resolve(audio.duration);
+                  URL.revokeObjectURL(blobUrl); // Clean up
+                });
+                audio.addEventListener('error', () => {
+                  resolve(0);
+                  URL.revokeObjectURL(blobUrl); // Clean up
+                });
+                audio.src = blobUrl;
               });
-              audio.addEventListener('error', () => {
-                resolve(0);
-                URL.revokeObjectURL(blobUrl); // Clean up
-              });
-              audio.src = blobUrl;
-            });
+            }
 
             if (duration && duration > 0) {
               // Update file with duration
@@ -651,7 +672,7 @@ export const useAudioStore = create((set, get) => ({
   },
 
   playRandomFile: () => {
-    const { audioFiles, playedFiles, selectedPlaylist, playlists, searchText, colorFilter, brightnessFilter } = get();
+    const { audioFiles, playedFiles, selectedPlaylist, playlists, searchText, colorFilter, brightnessFilter, durationFilter } = get();
 
     // Determine the pool of files to play from
     let filePool = audioFiles;
@@ -684,6 +705,16 @@ export const useAudioStore = create((set, get) => ({
           return f.brightness >= min && f.brightness <= max;
         });
       }
+    }
+
+    // Apply duration filter — keep random consistent with the list
+    if (durationFilter && (durationFilter.min > 0 || durationFilter.max != null)) {
+      filePool = filePool.filter(f => {
+        const d = f.duration || 0;
+        if (d < durationFilter.min) return false;
+        if (durationFilter.max != null && d > durationFilter.max) return false;
+        return true;
+      });
     }
 
     // Filter unplayed files from the pool
@@ -1157,6 +1188,21 @@ export const useAudioStore = create((set, get) => ({
 
   clearColorBrightnessFilter: () => {
     set({ colorFilter: new Set(), brightnessFilter: { min: 1, max: 10, includeUnrated: true } });
+  },
+
+  setDurationFilter: (patch) => {
+    const { durationFilter, isRandomPlaybackActive } = get();
+    const next = { ...durationFilter, ...patch };
+    if (next.min < 0) next.min = 0;
+    // Keep min <= max when an upper limit is set.
+    if (next.max != null && next.min > next.max) next.min = next.max;
+    const updates = { durationFilter: next };
+    if (isRandomPlaybackActive) updates.playedFiles = new Set();
+    set(updates);
+  },
+
+  clearDurationFilter: () => {
+    set({ durationFilter: { min: 0, max: null } });
   },
 
   // Palette CRUD

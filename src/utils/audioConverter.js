@@ -139,6 +139,78 @@ function writeString(view, offset, string) {
   }
 }
 
+// Read a WAV file's duration (seconds) straight from its header, without
+// decoding the audio. Works for any sample rate / bit depth, so high-res files
+// (e.g. 96 kHz) get an accurate duration at import time without the cost — or
+// the >48 kHz playback limitation — of an <audio> element. Returns 0 if the
+// header can't be parsed.
+export function readWavDuration(arrayBuffer) {
+  try {
+    const view = new DataView(arrayBuffer);
+    let offset = 12; // skip RIFF/size/WAVE
+    let sampleRate = 0;
+    let channels = 0;
+    let bitsPerSample = 0;
+    let byteRate = 0;
+
+    while (offset + 8 <= view.byteLength) {
+      const id = String.fromCharCode(
+        view.getUint8(offset), view.getUint8(offset + 1),
+        view.getUint8(offset + 2), view.getUint8(offset + 3)
+      );
+      const size = view.getUint32(offset + 4, true);
+
+      if (id === 'fmt ') {
+        channels = view.getUint16(offset + 10, true);
+        sampleRate = view.getUint32(offset + 12, true);
+        byteRate = view.getUint32(offset + 16, true);
+        bitsPerSample = view.getUint16(offset + 22, true);
+      } else if (id === 'data') {
+        const dataSize = Math.min(size, view.byteLength - (offset + 8));
+        // Prefer byteRate (handles odd block alignments); fall back to the
+        // derived frame size if byteRate is missing.
+        const bytesPerSecond = byteRate || (sampleRate * channels * (bitsPerSample / 8));
+        if (!bytesPerSecond) return 0;
+        return dataSize / bytesPerSecond;
+      }
+
+      offset += 8 + size;
+      if (size % 2) offset++; // word-aligned
+    }
+    return 0;
+  } catch (e) {
+    console.warn('Could not read WAV duration:', e);
+    return 0;
+  }
+}
+
+// Read a WAV file's sample rate from its header, without decoding the audio.
+// Used to decide whether a file needs downsampling for <audio> playback
+// (Chromium's media-element decoder rejects WAV above 48 kHz). Returns 0 if the
+// header can't be parsed.
+export function readWavSampleRate(arrayBuffer) {
+  try {
+    const view = new DataView(arrayBuffer);
+    let offset = 12; // skip RIFF/size/WAVE
+    while (offset + 8 <= view.byteLength) {
+      const id = String.fromCharCode(
+        view.getUint8(offset), view.getUint8(offset + 1),
+        view.getUint8(offset + 2), view.getUint8(offset + 3)
+      );
+      const size = view.getUint32(offset + 4, true);
+      if (id === 'fmt ') {
+        return view.getUint32(offset + 12, true);
+      }
+      offset += 8 + size;
+      if (size % 2) offset++; // word-aligned
+    }
+    return 0;
+  } catch (e) {
+    console.warn('Could not read WAV sample rate:', e);
+    return 0;
+  }
+}
+
 // Helper to check if a file is AIFF based on extension
 export function isAiffFile(filePath) {
   const ext = filePath.toLowerCase().split('.').pop();
