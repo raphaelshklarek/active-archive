@@ -1,6 +1,6 @@
 {
   "name": "active-archive",
-  "version": "4.4.0",
+  "version": "4.5.0",
   "description": "Brian Eno-inspired audio archive and shuffler",
   "main": "main.js",
   "scripts": {
@@ -29,9 +29,8 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
-    "electron": "^28.1.0",
-    "electron-builder": "^24.9.1",
-    "png-to-ico": "^3.0.1",
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0",
     "vite": "^5.0.10",
     "wait-on": "^7.2.0"
   },
@@ -47,11 +46,16 @@
     ],
     "mac": {
       "category": "public.app-category.music",
-      "icon": "icon.icns"
+      "icon": "AppIcon.icon"
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "icon.ico"
     },

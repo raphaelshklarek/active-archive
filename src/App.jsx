@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
-import { useAudioStore } from './store/audioStore';
+import { useAudioStore, getPlaylistFiles } from './store/audioStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { formatTotalDuration } from './utils/format';
 import ArchiveView from './components/ArchiveView';
 import ShufflerView from './components/ShufflerView';
-import './App.css';
 
 function App() {
   const {
@@ -27,25 +27,21 @@ function App() {
 
   useKeyboardShortcuts();
 
-  const [isGraphiteAccent, setIsGraphiteAccent] = React.useState(false);
+  // Dim the toolbar when the window loses focus, matching how macOS renders
+  // inactive windows (the native traffic lights grey out at the same time).
+  const [isWindowActive, setIsWindowActive] = React.useState(document.hasFocus());
 
   useEffect(() => {
     initialize();
-    
-    // Detect graphite accent color
-    const checkAccentColor = async () => {
-      if (window.require) {
-        const { ipcRenderer } = window.require('electron');
-        try {
-          const { isGraphite } = await ipcRenderer.invoke('get-accent-color');
-          setIsGraphiteAccent(isGraphite);
-        } catch (error) {
-          console.warn('Could not detect accent color:', error);
-        }
-      }
+
+    const onFocus = () => setIsWindowActive(true);
+    const onBlur = () => setIsWindowActive(false);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
     };
-    
-    checkAccentColor();
   }, []);
 
   useEffect(() => {
@@ -116,43 +112,17 @@ function App() {
     }
   };
 
-  // Calculate displayed files based on selected playlist
-  let displayedFiles = audioFiles;
-  if (selectedTab === 'archive' && selectedPlaylist) {
-    const playlist = playlists[selectedPlaylist];
-    if (playlist) {
-      displayedFiles = audioFiles.filter(f => playlist.fileIds.includes(f.id));
-    }
-  }
-
-  const displayedCount = selectedTab === 'archive' ? displayedFiles.length : audioFiles.length;
-  const totalDuration = (selectedTab === 'archive' ? displayedFiles : audioFiles).reduce((sum, file) => sum + file.duration, 0);
-  const formatDuration = (seconds) => {
-    const d = Math.floor(seconds / 86400);
-    const h = Math.floor((seconds % 86400) / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-
-    if (d > 0) return `${d}d ${h}h ${m}m ${s}s`;
-    if (h > 0) return `${h}h ${m}m ${s}s`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-  };
+  // Status bar counts the selected playlist on the Archive tab, the whole library otherwise
+  const displayedFiles = selectedTab === 'archive'
+    ? getPlaylistFiles({ audioFiles, selectedPlaylist, playlists })
+    : audioFiles;
+  const totalDuration = displayedFiles.reduce((sum, file) => sum + file.duration, 0);
 
   return (
-    <div className={`app ${isGraphiteAccent ? 'graphite-accent' : ''}`}>
+    <div className={`app ${isWindowActive ? '' : 'window-inactive'}`}>
+      {/* Unified toolbar: the native traffic lights sit at its left edge */}
       <div className="titlebar">
-        {/* Traffic Lights Bar */}
-        <div className="titlebar-top">
-          <div className="traffic-lights">
-            <div className="traffic-light red"></div>
-            <div className="traffic-light yellow"></div>
-            <div className="traffic-light green"></div>
-          </div>
-        </div>
-
-        {/* Controls Bar */}
-        <div className="titlebar-bottom">
+        <div className="titlebar-row">
           <div className="titlebar-controls">
             <button
               className={`control-button ${getPlayLabel() !== 'Play' ? 'playing' : ''}`}
@@ -197,9 +167,9 @@ function App() {
       </div>
 
       <div className="statusbar">
-        <span>{displayedCount} files</span>
+        <span>{displayedFiles.length} files</span>
         <span>•</span>
-        <span>Total: {formatDuration(totalDuration)}</span>
+        <span>Total: {formatTotalDuration(totalDuration)}</span>
         {isAnalyzingFiles && (
           <>
             <span>•</span>

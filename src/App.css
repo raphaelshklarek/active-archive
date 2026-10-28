@@ -7,13 +7,8 @@
 /* Remove focus ring from buttons and non-input elements */
 button:focus,
 [type="range"]:focus,
-.tab-button:focus,
 .toolbar-button:focus,
-.track-button:focus,
-.transport-button:focus,
-.combination-name:focus,
-.combination-delete:focus,
-.archive-view:focus {
+.track-button:focus {
   outline: none;
 }
 
@@ -41,10 +36,10 @@ body {
   overflow: hidden;
 }
 
-/* Titlebar */
+/* Titlebar: one unified toolbar row (macOS 27 style). main.js positions the
+   native traffic lights so they're vertically centred in it. */
 .titlebar {
   display: flex;
-  flex-direction: column;
   background: #f5f5f5;
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
   -webkit-app-region: drag;
@@ -57,95 +52,22 @@ body {
   }
 }
 
-/* Traffic Lights Bar */
-.titlebar-top {
+.titlebar-row {
   display: flex;
   align-items: center;
-  height: 38px;
-  padding: 0 12px;
-}
-
-.traffic-lights {
-  display: flex;
-  gap: 8px;
-  -webkit-app-region: no-drag;
-}
-
-.traffic-light {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  flex: 1;
+  height: 52px;
   position: relative;
-  overflow: hidden;
 }
 
-/* Base colors - slightly muted to work better with graphite */
-.traffic-light.red {
-  background: linear-gradient(180deg, #fc625d 0%, #ed6a5e 100%);
+.titlebar-controls,
+.titlebar-tabs {
+  transition: opacity 0.15s ease;
 }
 
-.traffic-light.yellow {
-  background: linear-gradient(180deg, #fdbc40 0%, #f5bf4f 100%);
-}
-
-.traffic-light.green {
-  background: linear-gradient(180deg, #34c749 0%, #61c554 100%);
-}
-
-/* Dark mode */
-@media (prefers-color-scheme: dark) {
-  .traffic-light {
-    border-color: rgba(255, 255, 255, 0.1);
-  }
-
-  .traffic-light.red {
-    background: linear-gradient(180deg, #ed6a5e 0%, #d6504c 100%);
-  }
-
-  .traffic-light.yellow {
-    background: linear-gradient(180deg, #f5bf4f 0%, #e6a73d 100%);
-  }
-
-  .traffic-light.green {
-    background: linear-gradient(180deg, #61c554 0%, #4fa945 100%);
-  }
-}
-
-/* Graphite accent color - grayscale traffic lights */
-.graphite-accent .traffic-light.red {
-  background: linear-gradient(180deg, #d4d4d4 0%, #bebebe 100%);
-}
-
-.graphite-accent .traffic-light.yellow {
-  background: linear-gradient(180deg, #d8d8d8 0%, #c2c2c2 100%);
-}
-
-.graphite-accent .traffic-light.green {
-  background: linear-gradient(180deg, #dcdcdc 0%, #c6c6c6 100%);
-}
-
-@media (prefers-color-scheme: dark) {
-  .graphite-accent .traffic-light.red {
-    background: linear-gradient(180deg, #9a9a9a 0%, #868686 100%);
-  }
-
-  .graphite-accent .traffic-light.yellow {
-    background: linear-gradient(180deg, #9e9e9e 0%, #8a8a8a 100%);
-  }
-
-  .graphite-accent .traffic-light.green {
-    background: linear-gradient(180deg, #a2a2a2 0%, #8e8e8e 100%);
-  }
-}
-
-/* Controls Bar */
-.titlebar-bottom {
-  display: flex;
-  align-items: center;
-  height: 88px;
-  padding: 0 24px;
-  position: relative;
+.window-inactive .titlebar-controls,
+.window-inactive .titlebar-tabs {
+  opacity: 0.45;
 }
 
 .titlebar-controls {
@@ -159,8 +81,8 @@ body {
 }
 
 .control-button {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: none;
   border-radius: 0;
   background: transparent;
@@ -186,8 +108,8 @@ body {
 }
 
 .control-button svg {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   fill: #333;
 }
 
@@ -265,9 +187,6 @@ body {
   }
 }
 
-.titlebar-spacer {
-  flex: 1;
-}
 
 /* Content */
 .content {
@@ -441,11 +360,6 @@ body {
   white-space: nowrap;
 }
 
-.playlist-count {
-  font-size: 11px;
-  opacity: 0.6;
-  font-variant-numeric: tabular-nums;
-}
 
 .playlist-delete {
   width: 24px;
@@ -1873,7 +1787,8 @@ body {
   height: 12px;
 }
 
-::-webkit-scrollbar-track {
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -1889,7 +1804,16 @@ body {
   background-clip: padding-box;
 }
 
+/* Outline of an untagged colour swatch in the file list */
+:root {
+  --swatch-empty-border: rgba(0, 0, 0, 0.25);
+}
+
 @media (prefers-color-scheme: dark) {
+  :root {
+    --swatch-empty-border: rgba(255, 255, 255, 0.3);
+  }
+
   ::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.2);
     background-clip: padding-box;
@@ -2407,4 +2331,11 @@ body {
   }
   .palette-add-button:hover:not(:disabled) { background: #454545; }
   .palette-add-button:active:not(:disabled) { background: #505050; }
+}
+
+/* Click-away layer behind popup menus */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
 }

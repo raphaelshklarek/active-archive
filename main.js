@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, systemPreferences, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, nativeTheme, clipboard, ClipboardItem } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 
@@ -20,156 +21,29 @@ function writeBoundsSync() {
   }
 }
 
-// Disable security features causing macOS crashes
-app.commandLine.appendSwitch('disable-features', 'RendererCodeIntegrity');
+// Folder the Add dialog last opened in. Since Electron 43 dialogs default to
+// Downloads instead of remembering the last location, so track it ourselves.
+let lastDialogDir = null;
 
-// Get MIME type based on file extension
-function getMimeType(filePath) {
-  const ext = filePath.toLowerCase().split('.').pop();
-  const mimeTypes = {
-    'mp3': 'audio/mpeg',
-    'wav': 'audio/wav',
-    'aiff': 'audio/aiff',
-    'aif': 'audio/aiff',
-    'flac': 'audio/flac',
-    'm4a': 'audio/mp4',
-    'aac': 'audio/aac',
-    'ogg': 'audio/ogg'
-  };
-  return mimeTypes[ext] || 'audio/*';
+function getDialogStatePath() {
+  return path.join(app.getPath('userData'), 'dialog-state.json');
 }
 
-// Check if file is AIFF
-function isAiffFile(filePath) {
-  const ext = filePath.toLowerCase().split('.').pop();
-  return ext === 'aiff' || ext === 'aif';
-}
-
-// Convert AIFF to WAV for browser compatibility
-function convertAiffToWav(aiffBuffer) {
-  const dataView = new DataView(aiffBuffer);
-
-  // Check if this is actually an AIFF file
-  const formId = String.fromCharCode(
-    dataView.getUint8(0),
-    dataView.getUint8(1),
-    dataView.getUint8(2),
-    dataView.getUint8(3)
-  );
-
-  if (formId !== 'FORM') {
-    throw new Error('Not a valid AIFF file');
-  }
-
-  // Parse AIFF chunks
-  let numChannels = 2;
-  let sampleRate = 44100;
-  let bitsPerSample = 16;
-  let audioDataOffset = 0;
-  let audioDataSize = 0;
-
-  let offset = 12;
-
-  while (offset < dataView.byteLength) {
-    const chunkId = String.fromCharCode(
-      dataView.getUint8(offset),
-      dataView.getUint8(offset + 1),
-      dataView.getUint8(offset + 2),
-      dataView.getUint8(offset + 3)
-    );
-
-    const chunkSize = dataView.getUint32(offset + 4, false);
-
-    if (chunkId === 'COMM') {
-      numChannels = dataView.getUint16(offset + 8, false);
-      bitsPerSample = dataView.getUint16(offset + 14, false);
-      sampleRate = readExtended(dataView, offset + 16);
-    } else if (chunkId === 'SSND') {
-      const ssndOffset = dataView.getUint32(offset + 8, false);
-      audioDataOffset = offset + 16 + ssndOffset;
-      audioDataSize = chunkSize - 8 - ssndOffset;
-      break;
-    }
-
-    offset += 8 + chunkSize;
-    if (chunkSize % 2 !== 0) offset += 1;
-  }
-
-  if (!audioDataSize) {
-    throw new Error('No audio data found in AIFF file');
-  }
-
-  // Extract and convert audio data from big-endian to little-endian
-  const pcmData = new Uint8Array(audioDataSize);
-  for (let i = 0; i < audioDataSize; i += 2) {
-    if (bitsPerSample === 16) {
-      pcmData[i] = dataView.getUint8(audioDataOffset + i + 1);
-      pcmData[i + 1] = dataView.getUint8(audioDataOffset + i);
-    } else {
-      pcmData[i] = dataView.getUint8(audioDataOffset + i);
-    }
-  }
-
-  // Create WAV buffer
-  return createWavBuffer(pcmData, numChannels, sampleRate, bitsPerSample);
-}
-
-function readExtended(dataView, offset) {
-  const exponent = ((dataView.getUint8(offset) & 0x7F) << 8) | dataView.getUint8(offset + 1);
-  const mantissa = dataView.getUint32(offset + 2, false);
-
-  if (exponent === 0 && mantissa === 0) {
-    return 0;
-  }
-
-  const f = mantissa / Math.pow(2, 31);
-  return f * Math.pow(2, exponent - 16383);
-}
-
-function createWavBuffer(pcmData, numChannels, sampleRate, bitsPerSample) {
-  const bytesPerSample = bitsPerSample / 8;
-  const blockAlign = numChannels * bytesPerSample;
-  const byteRate = sampleRate * blockAlign;
-  const dataSize = pcmData.length;
-  const headerSize = 44;
-  const fileSize = headerSize + dataSize;
-
-  const buffer = new ArrayBuffer(fileSize);
-  const view = new DataView(buffer);
-
-  // RIFF chunk
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, fileSize - 8, true);
-  writeString(view, 8, 'WAVE');
-
-  // fmt sub-chunk
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-
-  // data sub-chunk
-  writeString(view, 36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  // Write PCM data
-  const uint8View = new Uint8Array(buffer);
-  uint8View.set(pcmData, 44);
-
-  return buffer;
-}
-
-function writeString(view, offset, string) {
-  for (let i = 0; i < string.length; i++) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
+function rememberDialogDir(filePaths) {
+  if (filePaths.length === 0) return;
+  lastDialogDir = path.dirname(filePaths[0]);
+  fs.writeFile(getDialogStatePath(), JSON.stringify({ lastDialogDir })).catch(() => {});
 }
 
 let mainWindow;
+
+// Matches the body background in App.css, so the window never flashes the
+// wrong colour while loading or resizing.
+const windowBackground = () => nativeTheme.shouldUseDarkColors ? '#1e1e1e' : '#f5f5f5';
+
+nativeTheme.on('updated', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground());
+});
 
 function createWindow() {
   // Use saved bounds or defaults
@@ -187,8 +61,11 @@ function createWindow() {
     y: bounds.y,
     minWidth: 800,
     minHeight: 500,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#f5f5f5',
+    // Content runs under the title bar; the traffic lights are centred in the
+    // app's 52px unified toolbar (see .titlebar-row in App.css).
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 20, y: 19 },
+    backgroundColor: windowBackground(),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -237,6 +114,11 @@ app.whenReady().then(async () => {
   } catch (error) {
     // No saved bounds, use defaults
   }
+  try {
+    ({ lastDialogDir } = JSON.parse(await fs.readFile(getDialogStatePath(), 'utf8')));
+  } catch (error) {
+    // Never opened the Add dialog yet
+  }
 
   createWindow();
 });
@@ -261,47 +143,30 @@ app.on('activate', () => {
 // IPC Handlers
 ipcMain.handle('dialog:openFilesOrFolder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: lastDialogDir || undefined,
     properties: ['openFile', 'openDirectory', 'multiSelections'],
     filters: [
       { name: 'Audio Files', extensions: ['mp3', 'wav', 'aiff', 'flac', 'm4a', 'aac', 'ogg'] }
     ]
   });
-  
+
   if (result.canceled) {
     return { files: [], folders: [] };
   }
-  
-  const fs = require('fs');
+  rememberDialogDir(result.filePaths);
+
   const files = [];
   const folders = [];
-  
-  for (const path of result.filePaths) {
-    const stats = fs.statSync(path);
-    if (stats.isDirectory()) {
-      folders.push(path);
+
+  for (const filePath of result.filePaths) {
+    if (fsSync.statSync(filePath).isDirectory()) {
+      folders.push(filePath);
     } else {
-      files.push(path);
+      files.push(filePath);
     }
   }
-  
+
   return { files, folders };
-});
-
-ipcMain.handle('dialog:openFiles', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile', 'multiSelections'],
-    filters: [
-      { name: 'Audio Files', extensions: ['mp3', 'wav', 'aiff', 'flac', 'm4a', 'aac', 'ogg'] }
-    ]
-  });
-  return result.filePaths;
-});
-
-ipcMain.handle('dialog:openFolder', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory']
-  });
-  return result.filePaths;
 });
 
 ipcMain.handle('dialog:locateFile', async (event, { fileName, originalPath }) => {
@@ -347,37 +212,6 @@ ipcMain.handle('fs:stat', async (event, filePath) => {
   }
 });
 
-// New IPC handler to read file as buffer for analysis
-ipcMain.handle('audio:readFileForAnalysis', async (event, filePath) => {
-  try {
-    const fsSync = require('fs');
-    const fileBuffer = fsSync.readFileSync(filePath);
-
-    let resultBuffer;
-    let mimeType;
-
-    if (isAiffFile(filePath)) {
-      // Convert AIFF to WAV — slice to handle pooled Node.js Buffers
-      const fileArrayBuffer = fileBuffer.buffer.slice(
-        fileBuffer.byteOffset,
-        fileBuffer.byteOffset + fileBuffer.byteLength
-      );
-      const wavBuffer = convertAiffToWav(fileArrayBuffer);
-      resultBuffer = Buffer.from(wavBuffer);
-      mimeType = 'audio/wav';
-    } else {
-      resultBuffer = fileBuffer;
-      mimeType = getMimeType(filePath);
-    }
-
-    // Return buffer and mime type
-    return { buffer: resultBuffer, mimeType };
-  } catch (error) {
-    console.error('Error reading file for analysis:', error);
-    return null;
-  }
-});
-
 ipcMain.handle('shell:showInFolder', async (event, filePath) => {
   shell.showItemInFolder(filePath);
 });
@@ -391,7 +225,7 @@ ipcMain.handle('playback:getCacheDir', async () => {
   return dir;
 });
 
-ipcMain.handle('show-context-menu', async (event, { fileId, fileName, filePath, isMissing }) => {
+ipcMain.handle('show-context-menu', async (event, { isMissing }) => {
   return new Promise((resolve) => {
     const template = [
       {
@@ -427,44 +261,12 @@ ipcMain.handle('show-context-menu', async (event, { fileId, fileName, filePath, 
   });
 });
 
-ipcMain.handle('get-accent-color', async () => {
-  if (process.platform === 'darwin') {
-    try {
-      // Get the accent color as a hex string
-      const accentColor = systemPreferences.getAccentColor();
-      // Graphite is typically represented as a gray color (e.g., "8e8e93" or similar)
-      // Check if it's grayscale by seeing if R, G, B are similar
-      const r = parseInt(accentColor.substr(0, 2), 16);
-      const g = parseInt(accentColor.substr(2, 2), 16);
-      const b = parseInt(accentColor.substr(4, 2), 16);
-
-      // If the color is grayscale (R, G, B are within 10 of each other), it's likely graphite
-      const isGraphite = Math.abs(r - g) < 10 && Math.abs(g - b) < 10 && Math.abs(r - b) < 10;
-
-      return { color: accentColor, isGraphite };
-    } catch (error) {
-      console.error('Error getting accent color:', error);
-      return { color: null, isGraphite: false };
-    }
-  }
-  return { color: null, isGraphite: false };
-});
-
+// Put real file references on the clipboard (NSFilenamesPboardType on macOS,
+// CF_HDROP on Windows) so they paste into DAWs like Ableton as files.
 ipcMain.handle('clipboard:copyFiles', async (event, filePaths) => {
   try {
-    // Copy file paths to clipboard so they can be pasted into DAWs like Ableton
-    if (process.platform === 'darwin') {
-      // macOS: Create a plist format for NSFilenamesPboardType
-      const plistHeader = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<array>\n';
-      const plistFooter = '</array>\n</plist>';
-      const plistItems = filePaths.map(p => `  <string>${p}</string>`).join('\n');
-      const plist = plistHeader + plistItems + '\n' + plistFooter;
-
-      clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(plist, 'utf8'));
-    } else {
-      // Fallback for other platforms
-      clipboard.writeText(filePaths.join('\n'));
-    }
+    const uriList = filePaths.map(p => pathToFileURL(p).href).join('\r\n');
+    await clipboard.write([new ClipboardItem({ 'text/uri-list': uriList })]);
     return { success: true };
   } catch (error) {
     console.error('Error copying files to clipboard:', error);

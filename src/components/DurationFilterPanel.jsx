@@ -1,12 +1,6 @@
 import React, { useMemo } from 'react';
 import { useAudioStore } from '../store/audioStore';
-
-const fmt = (seconds) => {
-  const s = Math.max(0, Math.round(seconds));
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-};
+import { formatTime } from '../utils/format';
 
 // Strip above the file table for narrowing the library by piece length.
 // A dual-thumb range slider in minutes:seconds, where dragging the upper thumb
@@ -82,7 +76,7 @@ const DurationFilterPanel = () => {
             />
           </div>
           <span className="duration-readout">
-            {fmt(minVal)} – {fmt(maxVal)}
+            {formatTime(minVal)} – {formatTime(maxVal)}
           </span>
         </div>
       </div>

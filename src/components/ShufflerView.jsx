@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAudioStore } from '../store/audioStore';
 import TrackCard from './TrackCard';
-
-const isElectron = typeof window !== 'undefined' && window.require;
-const ipcRenderer = isElectron ? window.require('electron').ipcRenderer : null;
+import { ipcRenderer } from '../utils/electron';
+import { useDrag } from '../hooks/useDrag';
 
 const ShufflerView = () => {
   const {
@@ -49,7 +48,7 @@ const ShufflerView = () => {
   };
 
   const handleCopyAllTracks = async () => {
-    if (!ipcRenderer || shufflerTracks.length === 0) return;
+    if (shufflerTracks.length === 0) return;
 
     // Get file paths for all tracks
     const filePaths = shufflerTracks
@@ -69,10 +68,6 @@ const ShufflerView = () => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, id });
   };
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(null);
-  }, []);
 
   const handleRename = (id) => {
     const combo = combinations[id];
@@ -103,11 +98,11 @@ const ShufflerView = () => {
   // Close context menu on click outside
   useEffect(() => {
     if (contextMenu) {
-      const handler = () => closeContextMenu();
+      const handler = () => setContextMenu(null);
       document.addEventListener('click', handler);
       return () => document.removeEventListener('click', handler);
     }
-  }, [contextMenu, closeContextMenu]);
+  }, [contextMenu]);
 
   // Focus rename input when it appears
   useEffect(() => {
@@ -138,17 +133,7 @@ const ShufflerView = () => {
     setIsResizingSidebar(false);
   };
 
-  // Add global mouse handlers
-  useEffect(() => {
-    if (isResizingSidebar) {
-      document.addEventListener('mousemove', handleSidebarResize);
-      document.addEventListener('mouseup', handleSidebarResizeEnd);
-      return () => {
-        document.removeEventListener('mousemove', handleSidebarResize);
-        document.removeEventListener('mouseup', handleSidebarResizeEnd);
-      };
-    }
-  }, [isResizingSidebar]);
+  useDrag(isResizingSidebar, handleSidebarResize, handleSidebarResizeEnd);
 
   return (
     <div className="shuffler-view">

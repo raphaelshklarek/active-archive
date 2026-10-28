@@ -1,5 +1,30 @@
 # Changelog
 
+## v4.5.0 — 2026-10-28
+
+### New: macOS 27 (Golden Gate) look
+- **Unified toolbar.** The title bar is now a single 52px row instead of two (126px), giving the library more room. The native traffic lights sit centred in it; play/stop and the Archive/Shuffler tabs keep their positions.
+- The CSS-drawn traffic lights and Graphite-accent detection are gone; the real macOS window buttons handle accent colour, Graphite and inactive state.
+- The toolbar dims when the window loses focus, matching how macOS 27 distinguishes active and inactive windows.
+- The window background follows Light/Dark mode, so dark mode no longer flashes white on launch or resize.
+- Dark-mode fixes: no white square where the scrollbars meet, and empty colour-tag circles are visible again.
+
+### New: Icon Composer app icon with a dark version
+- `AppIcon.icon` replaces the `.icns` on macOS 26+, with **light, dark, tinted and clear** appearances generated from the original artwork. The dark appearance swaps the cream frame for near-black.
+- Building the Mac app now needs Xcode 26+ with its first-launch components installed (`sudo xcodebuild -runFirstLaunch`).
+
+### Improved: Electron 45
+- Upgraded from Electron 28 to **45.1.0** (Chromium 156) and electron-builder to 26.18.0. On macOS 27, Electron 28 could crash when playing WAV files above 48 kHz; that no longer happens.
+- **Copy** now puts real file references on the clipboard (`public.file-url` / `NSFilenamesPboardType` on macOS, `CF_HDROP` on Windows), so files paste into Finder and DAWs like Ableton. Paths containing `&` or `<` no longer break it.
+- The Add dialog remembers the last folder you added from (Electron 43+ would otherwise always open Downloads).
+
+### Improved: Leaner, faster code
+- Shared audio pipeline (`utils/audioFile.js`, `utils/wav.js`) replaces three copies of the WAV parser, two AIFF converters and duplicated loading code in the player, shuffler tracks and import; verified byte-identical on real WAV/AIFF files.
+- The archive list no longer re-filters the whole library about 60 times a second during playback (an unused progress value was written to the store on every audio frame).
+- Random playback and the archive list share one filter function, so they can't drift apart.
+- Removed a legacy path migration that checked every file on disk at each launch, an old combination format, unused IPC handlers, CSS, and a dependency.
+- Fixes: resized column/sidebar widths now actually persist; Delete and Cmd+A no longer prompt twice; muted or soloed shuffler tracks stay silent after Reshuffle.
+
 ## v4.4.0 — 2026-06-28
 
 ### New: High-sample-rate (hi-res) audio support

@@ -20,14 +20,12 @@ export function convertAiffToWav(aiffBuffer) {
   let numChannels = 2;
   let sampleRate = 44100;
   let bitsPerSample = 16;
-  let audioData = null;
   let audioDataOffset = 0;
   let audioDataSize = 0;
 
   let offset = 12; // Skip FORM header
 
   while (offset < dataView.byteLength) {
-    // Read chunk ID
     const chunkId = String.fromCharCode(
       dataView.getUint8(offset),
       dataView.getUint8(offset + 1),
@@ -35,26 +33,21 @@ export function convertAiffToWav(aiffBuffer) {
       dataView.getUint8(offset + 3)
     );
 
-    // Read chunk size (big-endian)
+    // Chunk size is big-endian
     const chunkSize = dataView.getUint32(offset + 4, false);
 
     if (chunkId === 'COMM') {
-      // Common chunk - contains audio format info
+      // Common chunk - contains audio format info (numSampleFrames skipped)
       numChannels = dataView.getUint16(offset + 8, false);
-      // Skip numSampleFrames (4 bytes)
       bitsPerSample = dataView.getUint16(offset + 14, false);
-      // Sample rate is stored as 80-bit extended precision float
-      // We'll extract it from the exponent and mantissa
       sampleRate = readExtended(dataView, offset + 16);
     } else if (chunkId === 'SSND') {
-      // Sound data chunk
       const ssndOffset = dataView.getUint32(offset + 8, false);
       audioDataOffset = offset + 16 + ssndOffset;
       audioDataSize = chunkSize - 8 - ssndOffset;
       break; // We have what we need
     }
 
-    // Move to next chunk (add 8 for chunk header)
     offset += 8 + chunkSize;
     // AIFF chunks are word-aligned
     if (chunkSize % 2 !== 0) offset += 1;
@@ -67,8 +60,8 @@ export function convertAiffToWav(aiffBuffer) {
   // Extract audio data and convert from big-endian to little-endian
   const pcmData = new Uint8Array(audioDataSize);
   for (let i = 0; i < audioDataSize; i += 2) {
-    // Swap byte order for 16-bit samples
     if (bitsPerSample === 16) {
+      // Swap byte order for 16-bit samples
       pcmData[i] = dataView.getUint8(audioDataOffset + i + 1);
       pcmData[i + 1] = dataView.getUint8(audioDataOffset + i);
     } else {
@@ -77,14 +70,12 @@ export function convertAiffToWav(aiffBuffer) {
     }
   }
 
-  // Create WAV file
-  const wavBuffer = createWavBuffer(pcmData, numChannels, sampleRate, bitsPerSample);
-  return wavBuffer;
+  return createWavBuffer(pcmData, numChannels, sampleRate, bitsPerSample);
 }
 
+// Read an 80-bit IEEE 754 extended precision float (AIFF stores the sample
+// rate this way). Simplified: good enough for standard sample rates.
 function readExtended(dataView, offset) {
-  // Read 80-bit IEEE 754 extended precision float (used in AIFF for sample rate)
-  // Simplified version - good enough for standard sample rates
   const exponent = ((dataView.getUint8(offset) & 0x7F) << 8) | dataView.getUint8(offset + 1);
   const mantissa = dataView.getUint32(offset + 2, false);
 
@@ -109,7 +100,7 @@ function createWavBuffer(pcmData, numChannels, sampleRate, bitsPerSample) {
 
   // RIFF chunk descriptor
   writeString(view, 0, 'RIFF');
-  view.setUint32(4, fileSize - 8, true); // File size - 8
+  view.setUint32(4, fileSize - 8, true);
   writeString(view, 8, 'WAVE');
 
   // fmt sub-chunk
@@ -126,9 +117,7 @@ function createWavBuffer(pcmData, numChannels, sampleRate, bitsPerSample) {
   writeString(view, 36, 'data');
   view.setUint32(40, dataSize, true);
 
-  // Write PCM data
-  const uint8View = new Uint8Array(buffer);
-  uint8View.set(pcmData, 44);
+  new Uint8Array(buffer).set(pcmData, headerSize);
 
   return buffer;
 }
@@ -136,78 +125,6 @@ function createWavBuffer(pcmData, numChannels, sampleRate, bitsPerSample) {
 function writeString(view, offset, string) {
   for (let i = 0; i < string.length; i++) {
     view.setUint8(offset + i, string.charCodeAt(i));
-  }
-}
-
-// Read a WAV file's duration (seconds) straight from its header, without
-// decoding the audio. Works for any sample rate / bit depth, so high-res files
-// (e.g. 96 kHz) get an accurate duration at import time without the cost — or
-// the >48 kHz playback limitation — of an <audio> element. Returns 0 if the
-// header can't be parsed.
-export function readWavDuration(arrayBuffer) {
-  try {
-    const view = new DataView(arrayBuffer);
-    let offset = 12; // skip RIFF/size/WAVE
-    let sampleRate = 0;
-    let channels = 0;
-    let bitsPerSample = 0;
-    let byteRate = 0;
-
-    while (offset + 8 <= view.byteLength) {
-      const id = String.fromCharCode(
-        view.getUint8(offset), view.getUint8(offset + 1),
-        view.getUint8(offset + 2), view.getUint8(offset + 3)
-      );
-      const size = view.getUint32(offset + 4, true);
-
-      if (id === 'fmt ') {
-        channels = view.getUint16(offset + 10, true);
-        sampleRate = view.getUint32(offset + 12, true);
-        byteRate = view.getUint32(offset + 16, true);
-        bitsPerSample = view.getUint16(offset + 22, true);
-      } else if (id === 'data') {
-        const dataSize = Math.min(size, view.byteLength - (offset + 8));
-        // Prefer byteRate (handles odd block alignments); fall back to the
-        // derived frame size if byteRate is missing.
-        const bytesPerSecond = byteRate || (sampleRate * channels * (bitsPerSample / 8));
-        if (!bytesPerSecond) return 0;
-        return dataSize / bytesPerSecond;
-      }
-
-      offset += 8 + size;
-      if (size % 2) offset++; // word-aligned
-    }
-    return 0;
-  } catch (e) {
-    console.warn('Could not read WAV duration:', e);
-    return 0;
-  }
-}
-
-// Read a WAV file's sample rate from its header, without decoding the audio.
-// Used to decide whether a file needs downsampling for <audio> playback
-// (Chromium's media-element decoder rejects WAV above 48 kHz). Returns 0 if the
-// header can't be parsed.
-export function readWavSampleRate(arrayBuffer) {
-  try {
-    const view = new DataView(arrayBuffer);
-    let offset = 12; // skip RIFF/size/WAVE
-    while (offset + 8 <= view.byteLength) {
-      const id = String.fromCharCode(
-        view.getUint8(offset), view.getUint8(offset + 1),
-        view.getUint8(offset + 2), view.getUint8(offset + 3)
-      );
-      const size = view.getUint32(offset + 4, true);
-      if (id === 'fmt ') {
-        return view.getUint32(offset + 12, true);
-      }
-      offset += 8 + size;
-      if (size % 2) offset++; // word-aligned
-    }
-    return 0;
-  } catch (e) {
-    console.warn('Could not read WAV sample rate:', e);
-    return 0;
   }
 }
 

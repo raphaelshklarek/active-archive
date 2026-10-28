@@ -60,7 +60,7 @@ export const useKeyboardShortcuts = () => {
         }
       }
 
-      // Cmd/Ctrl + F - Focus search (if you add this feature)
+      // Cmd/Ctrl + F - Focus search
       if ((e.metaKey || e.ctrlKey) && e.code === 'KeyF') {
         e.preventDefault();
         const searchInput = document.querySelector('.search-input');

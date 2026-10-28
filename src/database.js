@@ -3,44 +3,13 @@ import Dexie from 'dexie';
 // Initialize IndexedDB database
 export const db = new Dexie('ActiveArchiveDB');
 
-db.version(1).stores({
-  audioFiles: 'id, name, duration, date, location',
-  waveformCache: 'fileId, peaks, created',
-  combinations: 'id, name, date, tracks',
-  preferences: 'key, value'
-});
-
-// Version 2: Add playlists
-db.version(2).stores({
-  audioFiles: 'id, name, duration, date, location',
-  waveformCache: 'fileId, peaks, created',
-  combinations: 'id, name, date, tracks',
-  playlists: 'id, name, fileIds, created',
-  preferences: 'key, value'
-});
-
-// Version 3: Add isFavorite to audioFiles
-db.version(3).stores({
-  audioFiles: 'id, name, duration, date, location, isFavorite',
-  waveformCache: 'fileId, peaks, created',
-  combinations: 'id, name, date, tracks',
-  playlists: 'id, name, fileIds, created',
-  preferences: 'key, value'
-});
-
-// Version 4: Add importedFolders store and isMissing index
-db.version(4).stores({
-  audioFiles: 'id, name, duration, date, location, isFavorite, isMissing',
-  waveformCache: 'fileId, peaks, created',
-  combinations: 'id, name, date, tracks',
-  playlists: 'id, name, fileIds, created',
-  importedFolders: 'path, dateAdded, lastScanned',
-  preferences: 'key, value'
-});
-
-// Version 5: Index color (perceptual hue tag) and brightness (1-10) on audioFiles.
-// Inspired by Rod Modell's library organisation: each sound carries a colour and
-// a brightness rating; mixes are completed by retrieving e.g. "a green 7".
+// Schema history: v2 added playlists, v3 isFavorite, v4 importedFolders and
+// isMissing, v5 color and brightness. Dexie only needs the latest declaration
+// when no data upgrade is required.
+//
+// color/brightness: Rod Modell-style library organisation. Each sound carries
+// a colour and a 1-10 brightness rating; mixes are completed by retrieving
+// e.g. "a green 7".
 db.version(5).stores({
   audioFiles: 'id, name, duration, date, location, isFavorite, isMissing, color, brightness',
   waveformCache: 'fileId, peaks, created',
@@ -63,6 +32,10 @@ export const DEFAULT_COLOR_PALETTE = [
 // Helper functions
 export const saveAudioFile = async (file) => {
   await db.audioFiles.put(file);
+};
+
+export const saveAudioFiles = async (files) => {
+  await db.audioFiles.bulkPut(files);
 };
 
 export const getAudioFiles = async () => {
@@ -140,23 +113,6 @@ export const saveImportedFolder = async (folder) => {
 
 export const deleteImportedFolder = async (path) => {
   await db.importedFolders.delete(path);
-};
-
-// Migrate file paths after folder reorganisation
-export const migrateFilePaths = async (transformFn) => {
-  const files = await db.audioFiles.toArray();
-  let migratedCount = 0;
-  for (const file of files) {
-    const newPath = transformFn(file.location);
-    if (newPath !== file.location) {
-      await db.audioFiles.update(file.id, { location: newPath });
-      migratedCount++;
-    }
-  }
-  if (migratedCount > 0) {
-    console.log(`Migrated ${migratedCount} file paths`);
-  }
-  return migratedCount;
 };
 
 // Cleanup functions for waveform cache

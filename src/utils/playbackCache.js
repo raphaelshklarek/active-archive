@@ -8,20 +8,14 @@
 // result is cached on disk, so the cost is paid once per file.
 
 import { getAudioContext } from './audioContext';
+import { ipcRenderer, fs, path } from './electron';
 
 const TARGET_RATE = 48000;
-
-const isElectron = typeof window !== 'undefined' && window.require;
-const ipcRenderer = isElectron ? window.require('electron').ipcRenderer : null;
-const fs = isElectron ? window.require('fs') : null;
-const nodePath = isElectron ? window.require('path') : null;
 
 let cacheDirPromise = null;
 function getCacheDir() {
   if (!cacheDirPromise) {
-    cacheDirPromise = ipcRenderer
-      ? ipcRenderer.invoke('playback:getCacheDir').catch(() => null)
-      : Promise.resolve(null);
+    cacheDirPromise = ipcRenderer.invoke('playback:getCacheDir').catch(() => null);
   }
   return cacheDirPromise;
 }
@@ -104,8 +98,8 @@ export async function getPlayable48kWav(wavArrayBuffer, cacheId) {
   const dir = await getCacheDir();
   let filePath = null;
 
-  if (dir && fs && nodePath) {
-    filePath = nodePath.join(dir, `${hashKey(cacheId)}.wav`);
+  if (dir) {
+    filePath = path.join(dir, `${hashKey(cacheId)}.wav`);
     try {
       if (fs.existsSync(filePath)) {
         const buf = fs.readFileSync(filePath);

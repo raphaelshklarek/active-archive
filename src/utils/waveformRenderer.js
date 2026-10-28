@@ -1,3 +1,5 @@
+import WaveSurfer from 'wavesurfer.js';
+
 /**
  * Custom WaveSurfer renderFunction: draws a smooth waveform shape
  * filled with a horizontal gradient whose color varies by local amplitude.
@@ -102,4 +104,32 @@ export function renderAmplitudeColoredWaveform(peaks, ctx) {
   ctx.lineTo(width, centerY);
   ctx.closePath();
   ctx.fill();
+}
+
+// Creates the WaveSurfer instance used by both the archive player and shuffler
+// tracks. It plays through the default streaming <audio> element: that starts
+// fast and never holds the whole decoded file in memory, which keeps random
+// mode and rapid track switching smooth. (WAV/AIFF above 48 kHz are transcoded
+// before loading; see audioFile.js.)
+export function createWaveform(container) {
+  const ws = WaveSurfer.create({
+    container,
+    waveColor: 'rgba(100, 100, 100, 0.3)',
+    progressColor: 'transparent',
+    cursorColor: 'transparent',
+    cursorWidth: 0,
+    height: 88,
+    normalize: false,
+    mediaControls: false,
+    renderFunction: renderAmplitudeColoredWaveform
+  });
+
+  // By default WaveSurfer clips the wave canvas away in the played region and
+  // shows a progress canvas instead. We want the colourful waveform visible at
+  // all times, so disable the clip-path.
+  const noClipStyle = document.createElement('style');
+  noClipStyle.textContent = '.canvases { clip-path: none !important; }';
+  ws.getWrapper().getRootNode().appendChild(noClipStyle);
+
+  return ws;
 }
