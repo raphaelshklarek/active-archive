@@ -59,6 +59,9 @@
       ],
       "icon": "icon.ico"
     },
+    "toolsets": {
+      "nsis": "1.2.1"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
