@@ -1,6 +1,6 @@
 {
   "name": "active-archive",
-  "version": "4.5.0",
+  "version": "4.5.1",
   "description": "Brian Eno-inspired audio archive and shuffler",
   "main": "main.js",
   "scripts": {

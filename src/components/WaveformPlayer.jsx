@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAudioStore } from '../store/audioStore';
 import { saveAudioFile } from '../database';
 import { prepareAudio, cachePeaksFrom } from '../utils/audioFile';
@@ -16,6 +16,7 @@ const WaveformPlayer = ({ file }) => {
   const blobUrlRef = useRef(null);
   const currentFileRef = useRef(file);
   const expectedFileIdRef = useRef(null);
+  const [currentTime, setCurrentTime] = useState(0);
   const { isPaused, masterVolume } = useAudioStore();
   const meterRef = useAudioMeter(wavesurfer);
 
@@ -88,13 +89,22 @@ const WaveformPlayer = ({ file }) => {
       }
     };
 
+    // Cursor moves every frame; the time label re-renders at most ~10x/sec
+    let lastTimeUpdate = 0;
     ws.on('audioprocess', () => {
-      if (isMounted.current) updateCursorPosition();
+      if (!isMounted.current) return;
+      updateCursorPosition();
+      const now = Date.now();
+      if (now - lastTimeUpdate > 100) {
+        setCurrentTime(ws.getCurrentTime());
+        lastTimeUpdate = now;
+      }
     });
 
     ws.on('seeking', () => {
       if (!isMounted.current) return;
       updateCursorPosition();
+      setCurrentTime(ws.getCurrentTime());
     });
 
     ws.on('finish', () => {
@@ -142,6 +152,7 @@ const WaveformPlayer = ({ file }) => {
     let cancelled = false;
     const abortController = new AbortController();
     shouldAutoPlay.current = true;
+    setCurrentTime(0);
 
     // Stop current playback immediately
     try { wavesurfer.current.stop(); } catch (e) {}
@@ -220,7 +231,7 @@ const WaveformPlayer = ({ file }) => {
       </div>
       <div className="waveform-times">
         <span className="time-current">
-          {formatTime(wavesurfer.current?.getCurrentTime() || 0)}
+          {formatTime(currentTime)}
         </span>
         <span className="time-total">
           {formatTime(file.duration || 0)}

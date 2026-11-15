@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.5.1 — 2026-11-15
+
+### Fixed
+- The elapsed-time counter on the archive player now updates during playback, instead of only when you pause or seek.
+
 ## v4.5.0 — 2026-10-28
 
 ### New: macOS 27 (Golden Gate) look
