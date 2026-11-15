@@ -40,7 +40,7 @@ I hope you enjoy it and that it sparks your creativity. Peace and one love.
 
 ## Installation
 
-Download the latest version from the [Releases page](https://github.com/raphaelshklarek/Active-Archive/releases/latest):
+Download the latest version from the [Releases page](https://github.com/raphaelshklarek/active-archive/releases/latest):
 - **macOS (Apple Silicon):** `Active.Archive-x.x.x-arm64.dmg`
 - **Windows (x64):** `Active.Archive.Setup.x.x.x.exe`
 
